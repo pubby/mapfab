@@ -3,14 +3,20 @@
 #include <wx/dialog.h>
 #include <wx/fswatcher.h>
 #include <wx/bookctrl.h>
+#include <wx/mstream.h>
 
 #include "2d/geometry.hpp"
 
+#include "stamp.png.inc"
+#include "paint.png.inc"
+#include "dropper.png.inc"
+#include "select.png.inc"
+
 #include "controller.hpp"
 #include "convert.hpp"
-#include "tile_palette.hpp"
 #include "metatiles.hpp"
 #include "palette.hpp"
+#include "level.hpp"
 
 using namespace i2d;
 
@@ -128,8 +134,9 @@ private:
     void load_chr()
     {
         std::vector<std::uint8_t> data = read_binary_file(chr_path.c_str());
-        controller.chr_bitmaps = chr_to_bitmaps(data.data(), data.size(), default_palette.data());
-        controller.tile_palette.resize({ std::min<int>(controller.chr_bitmaps.size(), 16), controller.chr_bitmaps.size() / 16 });
+        controller.chr.fill(0);
+        std::copy_n(data.begin(), std::min(data.size(), controller.chr.size()), controller.chr.begin());
+        controller.refresh_chr();
         Refresh();
     }
 
@@ -140,8 +147,9 @@ private:
         Refresh();
     }
 
-    tile_palette_t* tile_palette;
+    palette_editor_t* palette_editor;
     metatile_editor_t* metatile_editor;
+    level_editor_t* level_editor;
 
     controller_t controller;
 
@@ -227,18 +235,39 @@ MyFrame::MyFrame()
     CreateStatusBar();
     SetStatusText("Welcome to wxWidgets!");
 
+    auto const make_bitmap = [&](char const* name, unsigned char const* data, std::size_t size)
+    {
+        wxMemoryInputStream stream(data, size);
+        wxImage img;
+        if(!img.LoadFile(stream, wxBITMAP_TYPE_PNG))
+            throw std::runtime_error(name);
+        return wxBitmap(img);
+    };
+#define MAKE_BITMAP(x) make_bitmap(#x, x, x##_size)
+
+    wxToolBar* tool_bar = new wxToolBar(this, wxID_ANY);
+    tool_bar->SetWindowStyle(wxTB_VERTICAL);
+    tool_bar->AddRadioTool(wxID_ANY, "Stamp", MAKE_BITMAP(src_img_stamp_png));
+    tool_bar->AddRadioTool(wxID_ANY, "Paint", MAKE_BITMAP(src_img_paint_png));
+    tool_bar->AddRadioTool(wxID_ANY, "Dropper", MAKE_BITMAP(src_img_dropper_png));
+    tool_bar->AddRadioTool(wxID_ANY, "Select", MAKE_BITMAP(src_img_select_png));
+
     wxNotebook* notebook = new wxNotebook(this, wxID_ANY, wxDefaultPosition, wxSize(600, 300));
-    palette_editor_t* foo = new palette_editor_t(notebook, controller);
-    notebook->AddPage(foo, wxT("Palettes"));
-    notebook->AddPage(new wxNotebookPage(notebook, -1), wxT("Metatiles"));
-    notebook->AddPage(new wxNotebookPage(notebook, -1), wxT("Levels"));
+
+    palette_editor = new palette_editor_t(notebook, controller);
+    notebook->AddPage(palette_editor, wxT("Palettes"));
+
+    metatile_editor = new metatile_editor_t(notebook, controller);
+    notebook->AddPage(metatile_editor, wxT("Metatiles"));
+
+    level_editor = new level_editor_t(notebook, controller);
+    notebook->AddPage(level_editor, wxT("Levels"));
 
     wxBoxSizer* sizer = new wxBoxSizer(wxHORIZONTAL);
-    tile_palette = new tile_palette_t((wxFrame*)this, controller);
-    metatile_editor = new metatile_editor_t((wxFrame*)this, controller);
 
     //sizer->Add(tile_palette, wxSizerFlags().Expand());
     //sizer->Add(metatile_editor, wxSizerFlags().Expand().Proportion(1));
+    sizer->Add(tool_bar, wxSizerFlags().Expand());
     sizer->Add(notebook, wxSizerFlags().Expand().Proportion(1));
     SetSizer(sizer);
     //SetAutoLayout(true);
@@ -257,6 +286,8 @@ MyFrame::MyFrame()
     Bind(wxEVT_UPDATE_UI, &MyFrame::refresh_undo_menus, this, wxID_UNDO);
     Bind(wxEVT_UPDATE_UI, &MyFrame::refresh_undo_menus, this, wxID_REDO);
     Bind(wxEVT_FSWATCHER, &MyFrame::on_watcher, this);
+
+    controller.refresh_chr();
 }
  
 void MyFrame::on_exit(wxCommandEvent& event)

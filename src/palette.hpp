@@ -185,7 +185,7 @@ private:
             dc.DrawText(string, { margin().w - w - 2, margin().h + 5 + i*16 });
         }
 
-        dc.SetPen(wxPen(wxColor(255, 255, 255, 127), 1));
+        dc.SetPen(wxPen(wxColor(255, 255, 255, 127), 0));
         dc.SetBrush(wxBrush(wxColor(0, 255, 255, mouse_down == MB_LEFT ? 127 : 31)));
         controller.for_each_color_pen(from_screen(mouse_current), [&](coord_t c, std::uint8_t color)
         {
@@ -204,6 +204,7 @@ private:
             {
                 controller.palette_map[c] = color;
             });
+            controller.refresh_chr();
         }
 
         Refresh();
@@ -215,51 +216,52 @@ private:
     }
 };
 
-class palette_editor_t : public wxScrolledWindow
+class palette_editor_t : public wxPanel
 {
 public:
     palette_editor_t(wxWindow* parent, controller_t& controller)
-    : wxScrolledWindow(parent)
+    : wxPanel(parent)
     , controller(controller)
     {
         dimen_t const nes_colors_dimen = { 4, 16 };
 
         wxPanel* left_panel = new wxPanel(this);
-        color_picker = new color_picker_t(left_panel, controller);
-        palette_canvas = new palette_canvas_t(this, controller);
-
+        picker = new color_picker_t(left_panel, controller);
         auto* palette_count_text = new wxStaticText(left_panel, wxID_ANY, "Palette Count");
-        spin_ctrl = new wxSpinCtrl(left_panel);
-        spin_ctrl->SetRange(1, 256);
+        count_ctrl = new wxSpinCtrl(left_panel);
+        count_ctrl->SetRange(1, 256);
+
+        canvas = new palette_canvas_t(this, controller);
 
         {
             wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
-            sizer->Add(color_picker, wxSizerFlags().Expand());
-            sizer->Add(palette_count_text, wxSizerFlags().Center());
-            sizer->Add(spin_ctrl, wxSizerFlags().Center());
+            sizer->Add(picker, wxSizerFlags().Expand().Proportion(1));
+            sizer->Add(palette_count_text, wxSizerFlags().Border(wxLEFT));
+            sizer->Add(count_ctrl, wxSizerFlags().Border(wxLEFT));
+            sizer->AddSpacer(8);
             left_panel->SetSizer(sizer);
         }
 
         {
             wxBoxSizer* sizer = new wxBoxSizer(wxHORIZONTAL);
             sizer->Add(left_panel, wxSizerFlags().Expand());
-            sizer->Add(palette_canvas, wxSizerFlags().Expand().Proportion(1));
+            sizer->Add(canvas, wxSizerFlags().Expand().Proportion(1));
             SetSizer(sizer);
         }
 
-        spin_ctrl->Bind(wxEVT_SPINCTRL, &palette_editor_t::on_change_palette_count, this);
+        count_ctrl->Bind(wxEVT_SPINCTRL, &palette_editor_t::on_change_palette_count, this);
     }
 
 private:
     controller_t& controller;
-    color_picker_t* color_picker;
-    palette_canvas_t* palette_canvas;
-    wxSpinCtrl* spin_ctrl;
+    color_picker_t* picker;
+    palette_canvas_t* canvas;
+    wxSpinCtrl* count_ctrl;
 
     void on_change_palette_count(wxSpinEvent& event)
     {
         controller.palette_map.num = event.GetPosition(); 
-        palette_canvas->grid_resize(controller.palette_map.dimen());
+        canvas->grid_resize(controller.palette_map.dimen());
         Refresh();
     }
 };

@@ -19,7 +19,7 @@ enum mouse_button_t
 class grid_box_t : public wxScrolledWindow
 {
 public:
-    explicit grid_box_t(wxWindow* parent)
+    explicit grid_box_t(wxWindow* parent, bool can_zoom = true)
     : wxScrolledWindow(parent)
     {
         Bind(wxEVT_LEFT_DOWN, &grid_box_t::on_left_down, this);
@@ -27,7 +27,8 @@ public:
         Bind(wxEVT_RIGHT_DOWN, &grid_box_t::on_right_down, this);
         Bind(wxEVT_RIGHT_UP, &grid_box_t::on_right_up, this);
         Bind(wxEVT_MOTION, &grid_box_t::on_motion, this);
-        Bind(wxEVT_MOUSEWHEEL, &grid_box_t::on_wheel, this);
+        if(can_zoom)
+            Bind(wxEVT_MOUSEWHEEL, &grid_box_t::on_wheel, this);
     }
 
     virtual unsigned tile_size() const { return 8; }
@@ -149,9 +150,15 @@ protected:
         int const h = (grid_dimen.h * tile_size() + margin().h * 2) * new_scale;
         sx = std::clamp(sx, 0, w);
         sy = std::clamp(sy, 0, h);
+        scale = new_scale;
+
         SetScrollbars(1,1, w, h, sx, sy);
 
-        scale = new_scale;
+        // Hack to fix the scroll bar:
+        wxPoint p = CalcScrolledPosition({ 0, 0 });
+        Scroll(-p.x + 1, -p.y + 1);
+        Scroll(-p.x, -p.y);
+
         Refresh();
     }
 
@@ -177,7 +184,7 @@ protected:
 class selector_box_t : public grid_box_t
 {
 public:
-    explicit selector_box_t(wxWindow* parent) : grid_box_t(parent) {}
+    explicit selector_box_t(wxWindow* parent) : grid_box_t(parent, false) {}
 
     void OnDraw(wxDC& dc) override
     {
@@ -185,7 +192,7 @@ public:
 
         if(mouse_down)
         {
-            dc.SetPen(wxPen(wxColor(255, 255, 255, 127), 1));
+            dc.SetPen(wxPen(wxColor(255, 255, 255, 127), 0));
             if(mouse_down == MB_LEFT)
                 dc.SetBrush(wxBrush(wxColor(255, 255, 0, 127)));
             else
