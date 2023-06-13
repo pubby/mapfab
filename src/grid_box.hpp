@@ -3,9 +3,13 @@
 
 #include <bit>
 
-#include "wx/wx.h"
+#include <wx/wx.h>
+#include <wx/notebook.h>
 
 #include "2d/geometry.hpp"
+
+#include "id.hpp"
+#include "model.hpp"
 
 using namespace i2d;
 
@@ -16,39 +20,36 @@ enum mouse_button_t
     MB_RIGHT,
 };
 
+enum
+{
+    TAB_PALETTE = 0,
+    TAB_METATILES = 1,
+    TAB_LEVELS = 2,
+};
+
+class editor_t;
+
 class grid_box_t : public wxScrolledWindow
 {
 public:
-    explicit grid_box_t(wxWindow* parent, bool can_zoom = true)
-    : wxScrolledWindow(parent)
-    {
-        Bind(wxEVT_LEFT_DOWN, &grid_box_t::on_left_down, this);
-        Bind(wxEVT_LEFT_UP, &grid_box_t::on_left_up, this);
-        Bind(wxEVT_RIGHT_DOWN, &grid_box_t::on_right_down, this);
-        Bind(wxEVT_RIGHT_UP, &grid_box_t::on_right_up, this);
-        Bind(wxEVT_MOTION, &grid_box_t::on_motion, this);
-        if(can_zoom)
-            Bind(wxEVT_MOUSEWHEEL, &grid_box_t::on_wheel, this);
-    }
+    explicit grid_box_t(wxWindow* parent, bool can_zoom = true);
 
-    virtual unsigned tile_size() const { return 8; }
+    void on_update(wxUpdateUIEvent&) { on_update(); }
+    virtual void on_update() { resize(); }
+
+    virtual dimen_t tile_size() const { return { 8, 8 }; }
     virtual dimen_t margin() const { return { 8, 8 }; }
 
-    void OnDraw(wxDC& dc) override
-    {
-        dc.SetUserScale(scale, scale);
-        draw_tiles(dc);
-    }
+    void OnDraw(wxDC& dc) override;
 
-    virtual void grid_resize(dimen_t dimen)
-    {
-        grid_dimen = dimen;
-        int const w = (dimen.w * tile_size() + margin().w * 2) * scale;
-        int const h = (dimen.h * tile_size() + margin().h * 2) * scale;
-        SetScrollbars(1,1, w, h, 0, 0);
-        SetMinSize({ w, h });
-    }
+    virtual void grid_resize(dimen_t dimen);
+    virtual void resize() = 0;
 
+    coord_t from_screen(coord_t pixel) const { return from_screen(pixel, tile_size()); }
+    coord_t from_screen(coord_t pixel, dimen_t tile_size, int user_scale = 1) const;
+
+    coord_t to_screen(coord_t c) const { return to_screen(c, tile_size()); }
+    coord_t to_screen(coord_t c, dimen_t tile_size) const;
 
 protected:
     dimen_t grid_dimen = {};
@@ -56,180 +57,260 @@ protected:
     coord_t mouse_current = {};
     int scale = 2;
 
-    coord_t from_screen(coord_t pixel) const { return from_screen(pixel, tile_size()); }
-    coord_t from_screen(coord_t pixel, int tile_size) const
-    {
-        int sx, sy;
-        GetViewStart(&sx, &sy);
-
-        pixel.x += sx;
-        pixel.y += sy;
-        pixel.x /= scale;
-        pixel.y /= scale;
-        pixel.x -= margin().w;
-        pixel.y -= margin().h;
-        pixel.x /= tile_size;
-        pixel.y /= tile_size;
-        return pixel;
-    }
-
-    coord_t to_screen(coord_t c) const { return to_screen(c, tile_size()); }
-    coord_t to_screen(coord_t c, int tile_size) const
-    {
-        c.x *= tile_size;
-        c.y *= tile_size;
-        c.x += margin().w;
-        c.y += margin().h;
-        return c;
-    }
-
     virtual void draw_tiles(wxDC& dc) = 0;
 
     virtual void on_down(mouse_button_t mb, coord_t) {}
     virtual void on_up(mouse_button_t mb, coord_t) {}
     virtual void on_motion(coord_t) {}
 
-    void on_down(wxMouseEvent& event, mouse_button_t mb) 
-    {
-        if(mouse_down && mouse_down != mb)
-        {
-            mouse_down = MB_NONE;
-            Refresh();
-        }
-        else
-        {
-            mouse_down = mb;
-            wxPoint pos = event.GetPosition();
-            on_down(mb, { pos.x, pos.y });
-        }
-    }
-
-    void on_up(wxMouseEvent& event, mouse_button_t mb) 
-    {
-        if(mouse_down == mb)
-        {
-            mouse_down = MB_NONE;
-            wxPoint pos = event.GetPosition();
-            on_up(mb, { pos.x, pos.y });
-        }
-    }
-
-    void on_motion(wxMouseEvent& event) 
-    {
-        wxPoint pos = event.GetPosition();
-        mouse_current = { pos.x, pos.y };
-        on_motion(mouse_current);
-    }
-
-    void on_wheel(wxMouseEvent& event)
-    {
-        int const rot = event.GetWheelRotation();
-        int const delta = event.GetWheelDelta();
-        int const turns = rot / delta;
-        int const target = turns >= 0 ? (scale << turns) : (scale >> -turns);
-        int const diff = target - scale;
-
-        int const new_scale = std::clamp(scale + diff, 1, 16);
-        if(new_scale == scale)
-            return;
-
-        auto cursor = event.GetPosition();
-
-        double const scale_diff = double(new_scale) / double(scale);
-
-        int sx, sy;
-        GetViewStart(&sx, &sy);
-        sx *= new_scale;
-        sy *= new_scale;
-        sx += cursor.x * diff;
-        sy += cursor.y * diff;
-        sx /= scale;
-        sy /= scale;
-
-        int const w = (grid_dimen.w * tile_size() + margin().w * 2) * new_scale;
-        int const h = (grid_dimen.h * tile_size() + margin().h * 2) * new_scale;
-        sx = std::clamp(sx, 0, w);
-        sy = std::clamp(sy, 0, h);
-        scale = new_scale;
-
-        SetScrollbars(1,1, w, h, sx, sy);
-
-        // Hack to fix the scroll bar:
-        wxPoint p = CalcScrolledPosition({ 0, 0 });
-        Scroll(-p.x + 1, -p.y + 1);
-        Scroll(-p.x, -p.y);
-
-        Refresh();
-    }
+    void on_down(wxMouseEvent& event, mouse_button_t mb);
+    void on_up(wxMouseEvent& event, mouse_button_t mb);
+    void on_motion(wxMouseEvent& event);
+    void on_wheel(wxMouseEvent& event);
 
     void on_left_down(wxMouseEvent& event)  { on_down(event, MB_LEFT); }
     void on_left_up(wxMouseEvent& event)    { on_up(event,   MB_LEFT); }
     void on_right_down(wxMouseEvent& event) { on_down(event, MB_RIGHT); }
     void on_right_up(wxMouseEvent& event)   { on_up(event,   MB_RIGHT); }
 
-    void set_scale(int new_scale)
-    {
-        new_scale = std::clamp(new_scale, 1, 8);
-
-        coord_t s = to_screen(mouse_current);
-        int const w = (grid_dimen.w * tile_size() + margin().w * 2) * scale;
-        int const h = (grid_dimen.h * tile_size() + margin().h * 2) * scale;
-        SetScrollbars(1,1, w, h, s.x, s.y);
-        SetMinSize({ w, h });
-
-        Refresh();
-    }
+    void set_scale(int new_scale);
 };
 
 class selector_box_t : public grid_box_t
 {
 public:
-    explicit selector_box_t(wxWindow* parent) : grid_box_t(parent, false) {}
+    explicit selector_box_t(wxWindow* parent, bool can_zoom = false) 
+    : grid_box_t(parent, can_zoom) 
+    {}
 
-    void OnDraw(wxDC& dc) override
-    {
-        grid_box_t::OnDraw(dc);
+    void OnDraw(wxDC& dc) override;
 
-        if(mouse_down)
-        {
-            dc.SetPen(wxPen(wxColor(255, 255, 255, 127), 0));
-            if(mouse_down == MB_LEFT)
-                dc.SetBrush(wxBrush(wxColor(255, 255, 0, 127)));
-            else
-                dc.SetBrush(wxBrush(wxColor(255, 0, 0, 127)));
-            rect_t const r = rect_from_2_coords(from_screen(mouse_start), from_screen(mouse_current));
-            coord_t const c0 = to_screen(r.c);
-            coord_t const c1 = to_screen(r.e());
-            dc.DrawRectangle(c0.x, c0.y, (c1 - c0).x, (c1 - c0).y);
-        }
-    }
+    virtual tile_model_t& tiles() const = 0;
+    auto& layer() const { return tiles().layer(); }
+    virtual select_map_t& selector() const { return layer().picker_selector; }
+    editor_t& editor();
 
+    virtual void resize() override { grid_resize(selector().dimen()); }
+    virtual dimen_t tile_size() const { return layer().tile_size(); }
+
+    virtual bool enable_tile_select() const { return true; }
 protected:
-    virtual select_map_t& selector() = 0;
 
     coord_t mouse_start = {};
 
-    virtual void on_down(mouse_button_t mb, coord_t at) override
+    virtual void on_down(mouse_button_t mb, coord_t at) override { mouse_start = at; }
+    virtual void on_up(mouse_button_t mb, coord_t mouse_end) override;
+    virtual void on_motion(coord_t at) override;
+
+    virtual void draw_tile(wxDC& dc, unsigned tile, coord_t at) {}
+    virtual void draw_tiles(wxDC& dc) override;
+};
+
+class canvas_box_t : public selector_box_t
+{
+public:
+    canvas_box_t(wxWindow* parent, model_t& model) 
+    : selector_box_t(parent, true) 
+    , model(model)
+    {}
+
+    void OnDraw(wxDC& dc) override
     {
-        mouse_start = at;
+        if(model.tool == TOOL_SELECT && !pasting())
+            selector_box_t::OnDraw(dc);
+        else
+            grid_box_t::OnDraw(dc);
     }
 
-    virtual void on_up(mouse_button_t mb, coord_t mouse_end) override
-    {
-        if(mb == MB_LEFT && !wxGetKeyState(WXK_SHIFT))
-            selector().select_all(false);
+    virtual void resize() override { grid_resize(layer().canvas_dimen()); }
 
-        selector().select(
-            rect_from_2_coords(from_screen(mouse_start), from_screen(mouse_end)), 
-            mb == MB_LEFT);
-        Refresh();
+protected:
+    model_t& model;
+
+    bool pasting() const { return model.paste && model.paste->format == layer().format(); }
+
+    virtual select_map_t& selector() const override { return layer().canvas_selector; }
+
+    //virtual undo_t make_undo(rect_t rect) = 0; TODO
+    virtual void post_update() {}
+
+    virtual void on_down(mouse_button_t mb, coord_t at) override;
+    virtual void on_up(mouse_button_t mb, coord_t mouse_end) override;
+    virtual void on_motion(coord_t at) override { Refresh(); }
+
+    virtual void draw_tile(wxDC& dc, unsigned tile, coord_t at) {}
+    virtual void draw_tiles(wxDC& dc) override;
+
+    void draw_underlays(wxDC& dc);
+    void draw_overlays(wxDC& dc);
+};
+
+class editor_t : public wxPanel
+{
+public:
+    undo_history_t history;
+
+    explicit editor_t(wxWindow* parent);
+
+    void on_update(wxUpdateUIEvent&) { on_update(); }
+    virtual void on_update() {}
+    virtual canvas_box_t& canvas_box() = 0;
+    auto& layer() { return canvas_box().layer(); }
+
+    virtual tile_copy_t copy(bool cut);
+};
+
+template<typename P>
+class tab_panel_t : public wxPanel
+{
+public:
+    using page_type = typename P::page_type;
+    using object_type = typename P::object_type;
+
+    tab_panel_t(wxWindow* parent, model_t& model)
+    : wxPanel(parent)
+    , model(model)
+    {
+        notebook = new wxNotebook(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxNB_BOTTOM);
+        wxBoxSizer* sizer = new wxBoxSizer(wxHORIZONTAL);
+        sizer->Add(notebook, wxSizerFlags().Expand().Proportion(1));
+        SetSizer(sizer);
+
+        notebook->Connect(wxID_ANY, wxEVT_RIGHT_UP, wxMouseEventHandler(tab_panel_t::on_right_click), nullptr, this);
+
+        Bind(wxEVT_MENU, &tab_panel_t::on_new_page, this, ID_R_NEW_PAGE);
+        Bind(wxEVT_MENU, &tab_panel_t::on_delete_page, this, ID_R_DELETE_PAGE);
+        Bind(wxEVT_MENU, &tab_panel_t::on_rename_page, this, ID_R_RENAME_PAGE);
+        Bind(wxEVT_MENU, &tab_panel_t::on_clone_page, this, ID_R_CLONE_PAGE);
     }
 
-    virtual void on_motion(coord_t at) override
+    page_type& page(int i) { return *static_cast<page_type*>(notebook->GetPage(i)); }
+
+    page_type* page()
     {
-        if(mouse_down)
-            Refresh();
+        if(notebook->GetSelection() == wxNOT_FOUND)
+            return nullptr;
+        return &page(notebook->GetSelection());
     }
+
+    void load_pages()
+    {
+        while(notebook->GetPageCount())
+            notebook->RemovePage(0);
+
+        for(auto const& object : collection())
+            notebook->AddPage(new page_type(notebook, model, object), object->name);
+    }
+
+    void new_page()
+    {
+        unsigned id = 0;
+        auto const make_string = [&]
+        {
+            wxString ret;
+            ret << P::name;
+            ret << "_";
+            ret << id;
+            return ret;
+        };
+
+        for(unsigned i = 0; i < notebook->GetPageCount(); ++i)
+        {
+            wxString used = notebook->GetPageText(i);
+            if(used == make_string())
+            {
+                ++id;
+                i = 0;
+            }
+        }
+
+        auto& object = collection().emplace_back(std::make_shared<object_type>());
+        auto* page = new page_type(notebook, model, object);
+        wxString const name = make_string();
+        notebook->AddPage(page, name);
+        object->name = name.ToStdString();
+    }
+
+    void on_right_click(wxMouseEvent& event)
+    {
+        rtab_id = notebook->HitTest(wxPoint(event.GetX(), event.GetY()));
+
+        wxMenu tab_menu;
+        tab_menu.Append(ID_R_NEW_PAGE, std::string("&New ") + P::name);
+        tab_menu.Append(ID_R_DELETE_PAGE, std::string("&Delete ") + P::name);
+        tab_menu.Append(ID_R_RENAME_PAGE, std::string("&Rename ") + P::name);
+        tab_menu.Append(ID_R_CLONE_PAGE, std::string("&Clone ") + P::name);
+
+        tab_menu.Enable(ID_R_DELETE_PAGE, rtab_id >= 0 && notebook->GetPageCount() > 1);
+        tab_menu.Enable(ID_R_RENAME_PAGE, rtab_id >= 0);
+        tab_menu.Enable(ID_R_CLONE_PAGE, rtab_id >= 0);
+
+        PopupMenu(&tab_menu);
+    }
+
+    void on_new_page(wxCommandEvent& event) { new_page(); }
+
+    void on_delete_page(wxCommandEvent& event)
+    {
+        if(rtab_id < 0 || notebook->GetPageCount() <= 1)
+            return;
+
+        wxString text;
+        text << "Delete ";
+        text < collection().at(rtab_id)->name;
+        text << "?\nThis cannot be undone.";
+
+        wxMessageDialog dialog(this, text, "Warning", wxOK | wxCANCEL | wxICON_WARNING);
+        if(dialog.ShowModal() == wxID_OK)
+        {
+            notebook->RemovePage(rtab_id);
+            collection().erase(collection().begin() + rtab_id);
+        }
+    }
+
+    void on_rename_page(wxCommandEvent& event)
+    {
+        if(rtab_id < 0)
+            return;
+        wxTextEntryDialog dialog(
+            this, "Rename Level", "New name:", collection().at(rtab_id)->name);
+
+        if(dialog.ShowModal() == wxID_OK)
+        {
+            wxString new_name = dialog.GetValue();
+            if(!new_name.IsEmpty())
+            {
+                for(unsigned i = 0; i < notebook->GetPageCount(); ++i)
+                {
+                    if(i == rtab_id)
+                        continue;
+
+                    wxString used = notebook->GetPageText(i);
+                    if(used == new_name)
+                    {
+                        wxMessageDialog dialog(this, std::string("A ") + P::name + std::string("with that name already exists."), "Error", wxOK | wxICON_ERROR);
+                        dialog.ShowModal();
+                        return;
+                    }
+                }
+
+                collection().at(rtab_id)->name = new_name.ToStdString();
+                notebook->SetPageText(rtab_id, new_name);
+            }
+        }
+    }
+
+    // TODO
+    void on_clone_page(wxCommandEvent& event)
+    {
+    }
+
+protected:
+    auto& collection() { return P::collection(model); }
+
+    model_t& model;
+    int rtab_id = -1;
+    wxNotebook* notebook;
 };
 
 #endif

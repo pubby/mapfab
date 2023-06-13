@@ -1,0 +1,34 @@
+#ifndef ID_HPP
+#define ID_HPP
+
+enum
+{
+    ID_OPEN_CHR = 1,
+    ID_OPEN_COLLISION,
+    ID_ATTR0,
+    ID_ATTR1,
+    ID_ATTR2,
+    ID_ATTR3,
+    ID_COLLISION,
+    ID_ZOOM_100,
+    ID_ZOOM_200,
+    ID_ZOOM_400,
+    ID_IMPORT_MT,
+    ID_IMPORT_LEVEL,
+    ID_EXPORT_MT,
+    ID_EXPORT_LEVEL,
+    ID_NEW_LEVEL,
+    ID_DELETE_LEVEL, // TODO
+    ID_R_NEW_PAGE,
+    ID_R_DELETE_PAGE,
+    ID_R_CLONE_PAGE,
+    ID_R_RENAME_PAGE,
+    ID_FILL,
+    ID_FILL_PASTE,
+    ID_FILL_ATTRIBUTE,
+    ID_TOOL_STAMP,
+    ID_TOOL_DROPPER,
+    ID_TOOL_SELECT,
+};
+
+#endif

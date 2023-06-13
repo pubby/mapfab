@@ -14,9 +14,9 @@ constexpr rgb_t RED = { 255, 0, 0 };
 constexpr rgb_t BLACK = { 0, 0, 0 };
 constexpr rgb_t WHITE = { 255, 255, 255 };
 constexpr rgb_t GREY = { 127, 127, 127 };
-rgb_t invert(rgb_t a) { return { 255 - a.r, 255 - a.g, 255 - a.b }; }
+inline rgb_t invert(rgb_t a) { return { 255 - a.r, 255 - a.g, 255 - a.b }; }
 
-unsigned distance(rgb_t a, rgb_t b)
+inline unsigned distance(rgb_t a, rgb_t b)
 {
     int const x = int(a.r) - int(b.r);
     int const y = int(a.g) - int(b.g);

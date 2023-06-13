@@ -1,20 +1,71 @@
-#ifndef model_HPP
-#define model_HPP
+#ifndef MODEL_HPP
+#define MODEL_HPP
 
 #include <cassert>
 #include <cstdint>
+#include <cstdio>
+#include <memory>
+#include <variant>
+#include <unordered_set>
+
+#include <boost/container/small_vector.hpp>
 
 #include "2d/geometry.hpp"
 #include "2d/grid.hpp"
 
 #include "convert.hpp"
-#include "undo.hpp"
+#include "tool.hpp"
 
 using namespace i2d;
+namespace bc = ::boost::container;
 
+class tile_layer_t;
+class metatile_layer_t;
+class level_model_t;
+
+constexpr std::uint8_t ACTIVE_COLLISION = 4;
+static constexpr std::size_t UNDO_LIMIT = 256;
+
+enum undo_type_t { UNDO, REDO };
+
+struct undo_tiles_t
+{
+    tile_layer_t* layer;
+    rect_t rect;
+    bc::small_vector<std::uint16_t, 4> tiles;
+};
+
+struct undo_palette_num_t
+{
+    int num;
+};
+
+struct undo_level_dimen_t
+{
+    metatile_layer_t* layer;
+    grid_t<std::uint8_t> tiles;
+};
+
+struct undo_level_palette_t
+{
+    level_model_t* model;
+    int palette;
+};
+
+using undo_t = std::variant
+    < std::monostate
+    , undo_tiles_t
+    , undo_palette_num_t
+    , undo_level_dimen_t
+    , undo_level_palette_t
+    >;
+
+// Used to select and deselect specific tiles:
 class select_map_t
 {
 public:
+    select_map_t() = default;
+    select_map_t(dimen_t dimen) { resize(dimen); }
     dimen_t dimen() const { return m_selection.dimen(); }
 
     bool has_selection() const { return (bool)m_select_rect; }
@@ -22,388 +73,330 @@ public:
     auto const& selection() const { return m_selection; }
     auto const& operator[](coord_t c) const { return m_selection.at(c); }
 
-    void select_all(bool select = true)
-    { 
-        m_selection.fill(select); 
-        if(select)
-            m_select_rect = to_rect(dimen());
-        else
-            m_select_rect = {}; 
-    }
+    void select_all(bool select = true);
+    void select(std::uint8_t tile, bool select_ = true);
+    void select_transpose(std::uint8_t tile, bool select_ = true);
+    void select(coord_t c, bool select = true);
+    void select(rect_t r, bool select = true);
 
-    void select(coord_t c, bool select = true)
-    { 
-        if(!in_bounds(c, dimen()))
-            return;
-        m_selection.at(c) = select; 
-        if(select)
-            m_select_rect = grow_rect_to_contain(m_select_rect, c);
-        else
-            recalc_select_rect(m_select_rect);
-    }
-
-    void select(rect_t r, bool select = true) 
-    { 
-        if(r = crop(r, dimen()))
-        {
-            for(coord_t c : rect_range(r))
-            {
-                assert(in_bounds(c, dimen()));
-                m_selection.at(c) = select; 
-            }
-            if(select)
-                m_select_rect = grow_rect_to_contain(m_select_rect, r);
-            else
-                recalc_select_rect(m_select_rect);
-        }
-    }
-
-    virtual void resize(dimen_t d) 
-    { 
-        m_selection.resize(d);
-        recalc_select_rect(to_rect(d));
-    }
+    virtual void resize(dimen_t d) ;
 
     template<typename Fn>
     void for_each_selected(Fn const& fn)
     {
-        rect_t const r = select_rect();
         for(coord_t c : rect_range(select_rect()))
             if(m_selection[c])
                 fn(c);
     }
 
 private:
-    void recalc_select_rect(rect_t range)
-    {
-        coord_t min = to_coord(dimen());
-        coord_t max = { 0, 0 };
-
-        for(coord_t c : rect_range(range))
-        {
-            if(m_selection[c])
-            {
-                min.x = std::min<int>(min.x, c.x);
-                min.y = std::min<int>(min.y, c.y);
-                max.x = std::max<int>(max.x, c.x);
-                max.y = std::max<int>(max.y, c.y);
-            }
-        }
-
-        if(min.x <= max.x && min.y <= max.y)
-            m_select_rect = rect_from_2_coords(min, max);
-        else
-            m_select_rect = {};
-    }
+    void recalc_select_rect(rect_t range);
 
     rect_t m_select_rect = {};
     grid_t<std::uint8_t> m_selection;
 };
 
-struct palette_model_t
+struct tile_copy_t
 {
-    palette_model_t() { clear(); }
-    void clear() { grid.fill(0x0F); }
+    unsigned format;
+    grid_t<std::uint16_t> tiles;
 
-    unsigned num = 1; 
-    fixed_grid_t<std::uint8_t, 25, 256> grid;
-};
-
-struct metatile_model_t
-{
-    void set_tile(coord_t c, std::uint8_t tile, std::uint8_t attr) 
+    std::vector<std::uint16_t> to_vec() const
     {
-        tiles.at(c) = tile; 
-        c.x /= 2;
-        c.y /= 2;
-        attributes.at(c) = attr;
+        std::vector<std::uint16_t> vec = { format, tiles.dimen().w, tiles.dimen().h };
+        vec.insert(vec.end(), tiles.begin(), tiles.end());
+        return vec;
     }
 
-    fixed_grid_t<std::uint8_t, 32, 32> tiles;
-    fixed_grid_t<std::uint8_t, 16, 16> attributes;
-    fixed_grid_t<std::uint8_t, 16, 16> collisions;
-    std::uint8_t palette = 0;
+    static tile_copy_t from_vec(std::vector<std::uint16_t> const& vec)
+    {
+        tile_copy_t ret = { vec.at(0) };
+        ret.tiles.resize({ vec.at(1), vec.at(2) });
+        unsigned i = 3;
+        for(coord_t c : dimen_range(ret.tiles.dimen()))
+            ret.tiles[c] = vec.at(i++);
+        return ret;
+    }
 };
 
-struct level_map_t
+enum
 {
-    level_map_t() { resize({ 16, 15 }); }
-    dimen_t dimen() const { return grid.dimen(); }
-    void resize(dimen_t dimen) { grid.resize(dimen); }
-
-    std::string name;
-    std::uint8_t palette = 0;
-    grid_t<std::uint8_t> grid;
+    LAYER_COLOR,
+    LAYER_CHR,
+    LAYER_COLLISION,
+    LAYER_METATILE,
 };
 
-constexpr std::uint8_t ACTIVE_COLLISION = 4;
-static constexpr std::size_t UNDO_LIMIT = 256;
+class tile_layer_t
+{
+public:
+    tile_layer_t(dimen_t picker_dimen, dimen_t canvas_dimen)
+    : picker_selector(picker_dimen)
+    , canvas_selector(canvas_dimen)
+    , tiles(canvas_dimen)
+    {}
+
+    virtual unsigned format() const = 0;
+    virtual dimen_t tile_size() const { return { 8, 8 }; }
+    virtual dimen_t canvas_dimen() const { return tiles.dimen(); }
+    virtual void canvas_resize(dimen_t d) { canvas_selector.resize(d); tiles.resize(d); }
+    virtual std::uint16_t get(coord_t c) const { return tiles.at(c); }
+    virtual void set(coord_t c, std::uint16_t value) { tiles.at(c) = value; }
+    virtual void reset(coord_t c) { set(c, 0); }
+    virtual std::uint16_t to_tile(coord_t pick) const { return pick.x + pick.y * picker_selector.dimen().w; }
+    virtual coord_t to_pick(std::uint8_t tile) const { return { tile % picker_selector.dimen().w, tile / picker_selector.dimen().w }; }
+
+    virtual tile_copy_t copy(bool cut = false);
+    virtual void paste(tile_copy_t const& copy, coord_t at);
+
+    virtual undo_t fill();
+    virtual undo_t fill_paste(tile_copy_t const& copy);
+
+    virtual void dropper(coord_t at);
+
+    virtual undo_t save(coord_t at) { return save({ at, picker_selector.dimen() }); }
+    virtual undo_t save(rect_t rect);
+
+    template<typename Fn>
+    void for_each_picked(coord_t pen_c, Fn const& fn)
+    {
+        rect_t const select_rect = picker_selector.select_rect();
+        picker_selector.for_each_selected([&](coord_t c)
+        {
+            std::uint16_t const tile = to_tile(c);
+            coord_t const at = pen_c + c - select_rect.c;
+            if(in_bounds(at, canvas_dimen()))
+                fn(at, tile);
+        });
+    }
+
+    select_map_t picker_selector;
+    select_map_t canvas_selector;
+    grid_t<std::uint8_t> tiles;
+};
+
+class tile_model_t
+{
+public:
+    virtual tile_layer_t& layer() = 0;
+    tile_layer_t const& clayer() const { return const_cast<tile_model_t*>(this)->layer(); }
+
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// color palette ///////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+class color_layer_t : public tile_layer_t
+{
+public:
+    explicit color_layer_t(std::uint16_t& num) 
+    : tile_layer_t({ 4, 16 }, { 25, 256 }) 
+    , num(num)
+    { tiles.fill(0x0F); }
+
+    virtual unsigned format() const override { return LAYER_COLOR; }
+    virtual dimen_t tile_size() const override { return { 16, 16 }; }
+    virtual dimen_t canvas_dimen() const override { return { tiles.dimen().w, num }; }
+    virtual void reset(coord_t c) override { set(c, 0x0F); }
+    virtual std::uint16_t to_tile(coord_t pick) const override { return pick.y + pick.x * picker_selector.dimen().h; }
+    virtual coord_t to_pick(std::uint8_t tile) const override { return { tile / picker_selector.dimen().h, tile % picker_selector.dimen().h }; }
+
+    std::uint16_t const& num;
+};
+
+class palette_model_t : public tile_model_t
+{
+public:
+    virtual tile_layer_t& layer() override { return color_layer; }
+
+    std::uint16_t num = 1;
+    color_layer_t color_layer = color_layer_t(this->num);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// metatiles ///////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+class chr_layer_t : public tile_layer_t
+{
+public:
+    explicit chr_layer_t(std::uint8_t const& active) 
+    : tile_layer_t({ 16, 16 }, { 32, 32 })
+    , attributes({ 16, 16 })
+    , active(active)
+    {}
+
+    virtual unsigned format() const override { return LAYER_CHR; }
+    virtual std::uint16_t get(coord_t c) const override { return tiles.at(c) | attributes.at(vec_div(c, 2)) << 8; }
+    virtual void set(coord_t c, std::uint16_t value) override { tiles.at(c) = value; attributes.at(vec_div(c, 2)) = value >> 8; }
+    virtual std::uint16_t to_tile(coord_t pick) const { return tile_layer_t::to_tile(pick) | (active << 8); }
+
+    undo_t fill_attribute();
+
+    std::uint8_t const& active;
+    grid_t<std::uint8_t> attributes;
+};
+
+class collision_layer_t : public tile_layer_t
+{
+public:
+    collision_layer_t() : tile_layer_t({ 8, 8 }, { 16, 16 }) {}
+
+    virtual unsigned format() const override { return LAYER_COLLISION; }
+    virtual dimen_t tile_size() const { return { 16, 16 }; }
+};
+
+class metatile_model_t : public tile_model_t
+{
+public:
+    bool collisions() const { return active == ACTIVE_COLLISION; }
+    virtual tile_layer_t& layer() override { if(collisions()) return collision_layer; else return chr_layer; }
+
+    std::uint16_t num = 1;
+    std::uint8_t active = 0;
+    std::uint8_t palette = 0;
+
+    chr_layer_t chr_layer = chr_layer_t(this->active);
+    collision_layer_t collision_layer;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// levels //////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+/* TODO
+struct object_field_t
+{
+    std::string name;
+    std::string value;
+};
+*/
+
+struct class_field_t
+{
+    std::string type = "U";
+    std::string name;
+};
+
+
+struct object_class_t
+{
+    std::string name;
+    rgb_t color = { 255, 255, 255 };
+    std::deque<class_field_t> fields;
+};
+
+struct object_t
+{
+    int index;
+    coord_t position;
+    std::string name;
+    std::string oclass;
+    std::unordered_map<std::string, std::string> fields;
+};
+
+class metatile_layer_t : public tile_layer_t
+{
+public:
+    metatile_layer_t() : tile_layer_t({ 16, 16 }, { 16, 15 }) {}
+
+    virtual unsigned format() const override { return LAYER_METATILE; }
+    virtual dimen_t tile_size() const { return { 16, 16 }; }
+
+    undo_t save() { return undo_level_dimen_t{ this, tiles }; }
+};
+
+class level_model_t : public tile_model_t
+{
+public:
+    virtual tile_layer_t& layer() override { return metatile_layer; }
+    dimen_t dimen() const { return metatile_layer.tiles.dimen(); }
+    void resize(dimen_t dimen) 
+    {
+        metatile_layer.tiles.resize(dimen);
+        metatile_layer.canvas_selector.resize(dimen);
+    }
+
+    std::string name = "level_0";
+    std::uint8_t palette = 0;
+    metatile_layer_t metatile_layer;
+
+    std::unordered_set<int> object_selector;
+    std::deque<object_t> objects = { object_t{ 0, coord_t{ 64, 32 } }};
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// model ///////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 struct model_t
 {
-    std::uint8_t active = 0;
-    select_map_t color_selector;
-    select_map_t tile_palette; // TODO
-    select_map_t collision_palette; // TODO
-    select_map_t mt_selector;
+    model_t()
+    {
+        levels.emplace_back(std::make_shared<level_model_t>());
+    }
+
+    bool modified = false;
+    bool modified_since_save = false;
+    void modify() { modified = modified_since_save = true; }
+
+    tool_t tool = {};
+    std::unique_ptr<tile_copy_t> paste; 
 
     std::array<std::uint8_t, 16*256> chr = {};
     palette_model_t palette;
     metatile_model_t metatiles;
-    std::deque<level_model_t> levels;
+    std::deque<std::shared_ptr<level_model_t>> levels;
+
+    std::deque<std::shared_ptr<object_class_t>> object_classes;
+    object_t object_picker = {};
 
     std::vector<attr_bitmaps_t> chr_bitmaps;
     std::vector<wxBitmap> collision_bitmaps;
     std::vector<wxBitmap> metatile_bitmaps;
 
+    std::array<std::uint8_t, 16> active_palette_array();
+
+    void refresh_chr();
+    void refresh_metatiles();
+
+    // Undo operations:
+    undo_t undo(undo_t const& undo) { modify(); return std::visit(*this, undo); }
+    undo_t operator()(std::monostate const& m) { return m; }
+    undo_t operator()(undo_tiles_t const& undo);
+    undo_t operator()(undo_palette_num_t const& undo);
+    undo_t operator()(undo_level_dimen_t const& undo);
+    undo_t operator()(undo_level_palette_t const& undo);
+
+    void write_file(FILE* fp, std::string const& chr_path, std::string const& collision_path) const;
+    void read_file(FILE* fp, std::string& chr_path, std::string& collisions_path);
+};
+
+struct undo_history_t
+{
     std::deque<undo_t> history[2];
 
-    int active_tile_size() const { return active == ACTIVE_COLLISION ? 16 : 8; }
-    auto& chr_selector() { return active == ACTIVE_COLLISION ? collision_palette : tile_palette; }
-
-    std::array<std::uint8_t, 16> active_palette_array()
-    {
-        std::array<std::uint8_t, 16> ret;
-        for(unsigned i = 0; i < 4; ++i)
-        {
-            ret[i*4] = palette_map[{ 0, active_palette }];
-            for(unsigned j = 1; j < 4; ++j)
-                ret[i*4+j] = palette_map[{ i*3 + j, active_palette }];
-        }
-        return ret;
-    }
-
-    void refresh_chr()
-    {
-        auto const palette_array = active_palette_array();
-        chr_bitmaps = chr_to_bitmaps(chr.data(), chr.size(), palette_array.data());
-
-        // TODO:
-        tile_palette.resize({ std::min<int>(chr_bitmaps.size(), 16), chr_bitmaps.size() / 16 });
-    }
-
-    void refresh_metatiles()
-    {
-        metatile_bitmaps.clear();
-        for(coord_t c : dimen_range({ 16, 16 }))
-        {
-            wxBitmap bitmap(wxSize(16, 16));
-
-            {
-                wxMemoryDC dc;
-                dc.SelectObject(bitmap);
-                for(int y = 0; y < 2; ++y)
-                for(int x = 0; x < 2; ++x)
-                {
-                    coord_t const c0 = { c.x*2 + x, c.y*2 + y };
-                    if(in_bounds(c0, metatiles.tiles.dimen()))
-                    {
-                        std::uint8_t const i = metatiles.tiles.at({ c.x*2 + x, c.y*2 + y });
-                        std::uint8_t const a = metatiles.attributes.at(c);
-                        dc.DrawBitmap(chr_bitmaps.at(i)[a], { x*8, y*8 }, false);
-                    }
-                }
-            }
-
-            metatile_bitmaps.push_back(std::move(bitmap));
-        }
-    }
-
-
     template<undo_type_t U>
-    void undo() 
+    void undo(model_t& model) 
     { 
         if(history[U].empty())
             return;
-        history[!U].push_front(undo(history[U].front()));
+        history[!U].push_front(model.undo(history[U].front()));
         history[U].pop_front();
     }
 
-    undo_t undo(undo_t const& undo) { return std::visit(*this, undo); }
+    void cull(); 
+    void push(undo_t const& undo); 
+    bool empty(undo_type_t U) const { return history[U].empty(); }
 
-    // Undo operations
-    undo_t operator()(undo_tiles_t const& undo) 
-    { 
-        undo_tiles_t ret = { metatiles.tiles, metatiles.attributes };
-        metatiles.tiles = undo.tiles; 
-        metatiles.attributes = undo.attributes; 
-        return ret;
-    }
-
-    undo_t operator()(undo_attribute_t const& undo) 
-    { 
-        undo_attribute_t ret = { metatiles.attributes.at(undo.at) };
-        metatiles.attributes.at(undo.at) = undo.attribute; 
-        return ret;
-    }
-
-    undo_t operator()(undo_collisions_t const& undo) 
-    { 
-        undo_collisions_t ret = { metatiles.collisions };
-        metatiles.collisions = undo.collisions; 
-        return ret;
-    }
-
-    void cull_undo()
+    template<typename T>
+    bool on_top() const
     {
-        if(history[UNDO].size() > UNDO_LIMIT)
-            history[UNDO].resize(UNDO_LIMIT);
-    }
-
-    void do_tiles() 
-    { 
-        history[REDO].clear(); 
-        history[UNDO].push_front(undo_tiles_t{ metatiles.tiles, metatiles.attributes }); 
-        cull_undo();
-    }
-
-    void do_attribute(coord_t at) 
-    { 
-        history[REDO].clear(); 
-        history[UNDO].push_front(undo_attribute_t{ at, metatiles.attributes.at(at) }); 
-        cull_undo();
-    }
-
-    void do_collisions() 
-    { 
-        history[REDO].clear(); 
-        history[UNDO].push_front(undo_collisions_t{ metatiles.collisions }); 
-        cull_undo();
-    }
-
-    template<typename Fn>
-    void for_each_color_pen(coord_t pen_c, Fn const& fn)
-    {
-        color_selector.for_each_selected([&](coord_t c)
-        {
-            std::uint8_t color = c.x * 16 + c.y;
-            coord_t const at = pen_c + c - color_selector.select_rect().c;
-            if(in_bounds(at, palette_map.dimen()))
-                fn(at, color);
-        });
-    }
-
-    template<typename Fn>
-    void for_each_chr_pen(coord_t pen_c, Fn const& fn)
-    {
-        auto& selector = chr_selector();
-        chr_selector().for_each_selected([&](coord_t c)
-        {
-            std::uint8_t tile = c.x + c.y * selector.dimen().w;
-            coord_t const at = pen_c + c - selector.select_rect().c;
-            if(in_bounds(at, metatiles.tiles.dimen()))
-                fn(at, tile);
-        });
-    }
-
-    template<typename Fn>
-    void for_each_mt_pen(coord_t pen_c, Fn const& fn)
-    {
-        mt_selector.for_each_selected([&](coord_t c)
-        {
-            std::uint8_t color = c.x + c.y * 16;
-            coord_t const at = pen_c + c - mt_selector.select_rect().c;
-            if(in_bounds(at, level.dimen()))
-                fn(at, color);
-        });
+        if(history[UNDO].empty())
+            return false;
+        return std::holds_alternative<T>(history[UNDO].front());
     }
 };
-
-void model_t::write_file(FILE* fp) const
-{
-    std::fwrite("MapFab", 6, fp);
-
-    // Version:
-    std::fputc(VERSION, fp);
-
-    // Unused:
-    std::fputc(0, fp);
-
-    // Palettes:
-    std::fputc(palette.num-1, fp);
-    for(std::uint8_t& data : palette.grid)
-        std::fputc(data, fp);
-
-    // Metatiles:
-    std::fputc(metatiles.palette, fp);
-    std::fputc(metatiles.num-1, fp);
-    for(std::uint8_t data : metatiles.tiles)
-        std::fputc(data, fp);
-    for(std::uint8_t data : metatiles.attributes)
-        std::fputc(data, fp);
-    for(std::uint8_t data : metatiles.collisions)
-        std::fputc(data, fp);
-
-    // Levels:
-    std::fputc(levels.size()-1, fp);
-    for(auto const& level : levels)
-    {
-        std::fwrite(level.name.c_str(), level.name.size()+1, fp);
-        std::fputc(level.palette, fp);
-        std::fputc(level.dimen().w, fp);
-        std::fputc(level.dimen().h, fp);
-        for(std::uint8_t data : level.grid)
-            std::fputc(data, fp);
-        std::fputc(0, fp); // TODO: Number of objects
-    }
-}
-
-void model_t::read_file(FILE* fp)
-{
-    constexpr char const* ERROR_STRING = "Invalid MapFab file.";
-
-    auto const get = [&]() -> char
-    {
-        int const got = std::getc(fp);
-        if(got == EOF)
-            throw std::runtime_error(ERROR_STR);
-        return static_cast<char>(got);
-    };
-
-    auto const get_str = [&]() -> std::string
-    {
-        std::string ret;
-        while(char c = get())
-            ret.push_back(c);
-        return ret;
-    };
-
-    char buffer[8];
-    if(!std::fread(buffer, 8, 1, fp))
-        throw std::runtime_error(ERROR_STR);
-    if(memcmp(buffer, "MapFab", 6) != 0)
-        throw std::runtime_error(ERROR_STR);
-    if(buffer[6] >= VERSION)
-        throw std::runtime_error("File is from a newer version of MapFab.");
-
-    // Palettes:
-    palette.num = get()+1;
-    palette.clear();
-    for(std::uint8_t& data : palette.grid)
-        palette[{ j, i }] = get();
-
-    // Metatiles:
-    metatiles.palette = get();
-    metatiles.num = get()+1;
-    for(std::uint8_t& data : metatiles.tiles)
-        data = get();
-    for(std::uint8_t& data : metatiles.attributes)
-        data = get();
-    for(std::uint8_t& data : metatiles.collisions)
-        data = get();
-
-    // Levels:
-    levels.clear();
-    levels.resize(get()+1);
-    for(auto& level : levels)
-    {
-        level.name = get_str();
-        level.palette = get();
-        level.resize({ get(), get() });
-        for(std::uint8_t& data : level.grid)
-            data = get();
-        get(); // TODO: Number of objects
-    }
-}
 
 #endif
