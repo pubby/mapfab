@@ -18,7 +18,7 @@
 
 using namespace i2d;
 
-void draw_metatile(model_t const& model, wxDC& dc, std::uint8_t tile, coord_t at);
+void draw_metatile(metatile_model_t const& model, wxDC& dc, std::uint8_t tile, coord_t at);
 
 class object_field_t : public wxPanel
 {
@@ -85,7 +85,11 @@ private:
 
     virtual tile_model_t& tiles() const override { return *level; }
 
-    virtual void draw_tile(wxDC& dc, unsigned tile, coord_t at) override { draw_metatile(model, dc, tile, at); }
+    virtual void draw_tile(wxDC& dc, unsigned tile, coord_t at) override 
+    { 
+        if(level->metatiles) 
+            draw_metatile(*level->metatiles, dc, tile, at); 
+    }
     virtual void draw_tiles(wxDC& dc) override;
 };
 
@@ -98,7 +102,11 @@ public:
     , level(level)
     { resize(); }
 
-    virtual void draw_tile(wxDC& dc, unsigned tile, coord_t at) override { draw_metatile(model, dc, tile, at); }
+    virtual void draw_tile(wxDC& dc, unsigned tile, coord_t at) override 
+    { 
+        if(level->metatiles)
+            draw_metatile(*level->metatiles, dc, tile, at); 
+    }
     virtual void draw_tiles(wxDC& dc) override;
 
     coord_t crop(coord_t at)
@@ -130,9 +138,10 @@ public:
     level_editor_t(wxWindow* parent, model_t& model, std::shared_ptr<level_model_t> level);
 
     virtual void on_update() override;
+    level_model_t& level_model() { return *level; }
 
-private:
     model_t& model;
+private:
     std::shared_ptr<level_model_t> level;
 
     metatile_picker_t* picker;
@@ -141,6 +150,7 @@ private:
     wxSpinCtrl* width_ctrl;
     wxSpinCtrl* height_ctrl;
     wxPanel* object_panel;
+    std::array<wxRadioButton*, 2> layers;
 
     int last_palette = -1;
     int last_width = -1;
@@ -162,6 +172,15 @@ struct level_policy_t
     using page_type = level_editor_t;
     static constexpr char const* name = "level";
     static auto& collection(model_t& m) { return m.levels; }
+    static void on_page_changing(page_type& page, object_type& object) 
+    {
+        if(object.metatiles)
+        {
+            // TODO
+            //object.metatiles->refresh_chr(page.model.chr, page.model.palette_array(object.palette));
+            //object.metatiles->refresh_metatiles();
+        }
+    }
 };
 
 class levels_panel_t : public tab_panel_t<level_policy_t>

@@ -62,6 +62,7 @@ struct class_policy_t
     using page_type = class_editor_t;
     static constexpr char const* name = "class";
     static auto& collection(model_t& m) { return m.object_classes; }
+    static void on_page_changing(page_type& page, object_type& object) {}
 };
 
 class class_panel_t : public tab_panel_t<class_policy_t>

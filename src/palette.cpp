@@ -71,15 +71,15 @@ void palette_canvas_t::draw_tiles(wxDC& dc)
             dc.DrawLine(sx, margin().h/2, sx, sy + margin().h/2);
         dc.DrawText(text, { sx + text_offset, margin().h / 2 });
     };
-    vline(1,  "UBC", true, -14);
-    vline(4,  "BG 0");
-    vline(7,  "BG 1");
-    vline(10, "BG 2");
-    vline(13, "BG 3");
-    vline(16, "SPR 0");
-    vline(19, "SPR 1");
-    vline(22, "SPR 2");
-    vline(25, "SPR 3", false);
+    vline(3,  "BG 0");
+    vline(6,  "BG 1");
+    vline(9,  "BG 2");
+    vline(12, "BG 3");
+    vline(15, "SPR 0");
+    vline(18, "SPR 1");
+    vline(21, "SPR 2");
+    vline(24, "SPR 3", false);
+    vline(24, "UBC", true, 2);
 
     for(unsigned i = 0; i < grid_dimen.h; ++i)
     {

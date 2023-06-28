@@ -190,6 +190,47 @@ undo_t chr_layer_t::fill_attribute()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// metatile_model_t ////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+void metatile_model_t::clear_chr()
+{
+    chr_bitmaps.clear();
+}
+
+void metatile_model_t::refresh_chr(chr_array_t const& chr, palette_array_t const& palette)
+{
+    chr_bitmaps = chr_to_bitmaps(chr.data(), chr.size(), palette.data());
+}
+
+void metatile_model_t::refresh_metatiles()
+{
+    metatile_bitmaps.clear();
+    for(coord_t c : dimen_range({ 16, 16 }))
+    {
+        wxBitmap bitmap(wxSize(16, 16));
+
+        {
+            wxMemoryDC dc;
+            dc.SelectObject(bitmap);
+            for(int y = 0; y < 2; ++y)
+            for(int x = 0; x < 2; ++x)
+            {
+                coord_t const c0 = { c.x*2 + x, c.y*2 + y };
+                if(in_bounds(c0, chr_layer.tiles.dimen()))
+                {
+                    std::uint8_t const i = chr_layer.tiles.at({ c.x*2 + x, c.y*2 + y });
+                    std::uint8_t const a = chr_layer.attributes.at(c);
+                    dc.DrawBitmap(chr_bitmaps.at(i)[a], { x*8, y*8 }, false);
+                }
+            }
+        }
+
+        metatile_bitmaps.push_back(std::move(bitmap));
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // model_t /////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -223,55 +264,24 @@ undo_t model_t::operator()(undo_level_palette_t const& undo)
     return ret;
 }
 
-std::array<std::uint8_t, 16> model_t::active_palette_array()
+palette_array_t model_t::palette_array(unsigned palette_index)
 {
     std::array<std::uint8_t, 16> ret;
     for(unsigned i = 0; i < 4; ++i)
     {
-        ret[i*4] = palette.color_layer.tiles.at({ 0, metatiles.palette });
-        for(unsigned j = 1; j < 4; ++j)
-            ret[i*4+j] = palette.color_layer.tiles.at({ i*3 + j, metatiles.palette });
+        ret[i*4] = palette.color_layer.tiles.at({ 24, palette_index });
+        for(unsigned j = 0; j < 3; ++j)
+            ret[i*4+j+1] = palette.color_layer.tiles.at({ i*3 + j, palette_index });
     }
     return ret;
-}
-
-void model_t::refresh_chr()
-{
-    auto const palette_array = active_palette_array();
-    chr_bitmaps = chr_to_bitmaps(chr.data(), chr.size(), palette_array.data());
-}
-
-void model_t::refresh_metatiles()
-{
-    metatile_bitmaps.clear();
-    for(coord_t c : dimen_range({ 16, 16 }))
-    {
-        wxBitmap bitmap(wxSize(16, 16));
-
-        {
-            wxMemoryDC dc;
-            dc.SelectObject(bitmap);
-            for(int y = 0; y < 2; ++y)
-            for(int x = 0; x < 2; ++x)
-            {
-                coord_t const c0 = { c.x*2 + x, c.y*2 + y };
-                if(in_bounds(c0, metatiles.chr_layer.tiles.dimen()))
-                {
-                    std::uint8_t const i = metatiles.chr_layer.tiles.at({ c.x*2 + x, c.y*2 + y });
-                    std::uint8_t const a = metatiles.chr_layer.attributes.at(c);
-                    dc.DrawBitmap(chr_bitmaps.at(i)[a], { x*8, y*8 }, false);
-                }
-            }
-        }
-
-        metatile_bitmaps.push_back(std::move(bitmap));
-    }
 }
 
 constexpr std::uint8_t SAVE_VERSION = 1;
 
 void model_t::write_file(FILE* fp, std::string const& chr_path, std::string const& collision_path) const
 {
+    assert(false);
+    /* TODO
     auto const write_str = [&](std::string const& str)
     {
         std::fwrite(str.c_str(), str.size()+1, 1, fp);
@@ -316,10 +326,13 @@ void model_t::write_file(FILE* fp, std::string const& chr_path, std::string cons
             std::fputc(data, fp);
         std::fputc(0, fp); // TODO: Number of objects
     }
+    */
 }
 
 void model_t::read_file(FILE* fp, std::string& chr_path, std::string& collisions_path)
 {
+    assert(false);
+    /* TODO
     constexpr char const* ERROR_STRING = "Invalid MapFab file.";
 
     auto const get = [&]() -> char
@@ -380,6 +393,7 @@ void model_t::read_file(FILE* fp, std::string& chr_path, std::string& collisions
     }
 
     modified = modified_since_save = false;
+    */
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -399,4 +413,17 @@ void undo_history_t::push(undo_t const& undo)
     history[REDO].clear(); 
     history[UNDO].push_front(undo); 
     cull();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// chr_file_t //////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+void chr_file_t::load()
+{
+    chr = {};
+    if(path.empty())
+        return;
+    std::vector<std::uint8_t> data = read_binary_file(path.c_str());
+    std::copy_n(data.begin(), std::min(data.size(), chr.size()), chr.begin());
 }

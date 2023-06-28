@@ -1,6 +1,6 @@
 #include "level.hpp"
 
-void draw_metatile(model_t const& model, wxDC& dc, std::uint8_t tile, coord_t at)
+void draw_metatile(metatile_model_t const& model, wxDC& dc, std::uint8_t tile, coord_t at)
 {
     if(tile < model.metatile_bitmaps.size())
         dc.DrawBitmap(model.metatile_bitmaps[tile], { at.x, at.y }, false);
@@ -206,8 +206,6 @@ void object_dialog_t::on_combo_select(wxCommandEvent& event)
 void object_dialog_t::on_combo_text(wxCommandEvent& event)
 {
     object.oclass = combo->GetValue();
-    while(object.oclass.size() && std::isspace(object.oclass.back()))
-        object.oclass.pop_back();
 
     for(auto const& ptr : model.object_classes)
     {
@@ -266,7 +264,6 @@ void object_dialog_t::on_reset(wxCommandEvent& event)
 
 void metatile_picker_t::draw_tiles(wxDC& dc)
 {
-    model.refresh_metatiles(); // TODO
     selector_box_t::draw_tiles(dc);
 }
 

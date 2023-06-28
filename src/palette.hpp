@@ -43,7 +43,7 @@ public:
 private:
     virtual tile_model_t& tiles() const { return model.palette; }
     virtual dimen_t margin() const override { return { 16, 16 }; }
-    virtual void post_update() override { model.refresh_chr(); }
+    //virtual void post_update() override { model.refresh_chr(); } TODO
     virtual void draw_tile(wxDC& dc, unsigned color, coord_t at) override { draw_color_tile(dc, color, at); }
     virtual void draw_tiles(wxDC& dc) override;
 };

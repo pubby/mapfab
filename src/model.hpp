@@ -7,6 +7,7 @@
 #include <memory>
 #include <variant>
 #include <unordered_set>
+#include <filesystem>
 
 #include <boost/container/small_vector.hpp>
 
@@ -22,6 +23,9 @@ namespace bc = ::boost::container;
 class tile_layer_t;
 class metatile_layer_t;
 class level_model_t;
+
+using palette_array_t = std::array<std::uint8_t, 16>;
+using chr_array_t = std::array<std::uint8_t, 16*256>;
 
 constexpr std::uint8_t ACTIVE_COLLISION = 4;
 static constexpr std::size_t UNDO_LIMIT = 256;
@@ -184,6 +188,19 @@ public:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+// chr /////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+struct chr_file_t
+{
+    std::string name;
+    std::filesystem::path path;
+    chr_array_t chr = {};
+
+    void load();
+};
+
+////////////////////////////////////////////////////////////////////////////////
 // color palette ///////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -253,9 +270,17 @@ public:
     bool collisions() const { return active == ACTIVE_COLLISION; }
     virtual tile_layer_t& layer() override { if(collisions()) return collision_layer; else return chr_layer; }
 
+    void clear_chr();
+    void refresh_chr(chr_array_t const& chr, palette_array_t const& palette);
+    void refresh_metatiles();
+
+    std::string name = "metatiles_0";
+    std::string chr_name;
     std::uint16_t num = 1;
     std::uint8_t active = 0;
     std::uint8_t palette = 0;
+    std::vector<attr_bitmaps_t> chr_bitmaps;
+    std::vector<wxBitmap> metatile_bitmaps;
 
     chr_layer_t chr_layer = chr_layer_t(this->active);
     collision_layer_t collision_layer;
@@ -264,14 +289,6 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 // levels //////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-
-/* TODO
-struct object_field_t
-{
-    std::string name;
-    std::string value;
-};
-*/
 
 struct class_field_t
 {
@@ -321,6 +338,7 @@ public:
     std::string name = "level_0";
     std::uint8_t palette = 0;
     metatile_layer_t metatile_layer;
+    std::shared_ptr<metatile_model_t> metatiles;
 
     std::unordered_set<int> object_selector;
     std::deque<object_t> objects = { object_t{ 0, coord_t{ 64, 32 } }};
@@ -334,6 +352,8 @@ struct model_t
 {
     model_t()
     {
+        chr_files.push_back({ "tileset" });
+        metatiles.emplace_back(std::make_shared<metatile_model_t>());
         levels.emplace_back(std::make_shared<level_model_t>());
     }
 
@@ -344,22 +364,19 @@ struct model_t
     tool_t tool = {};
     std::unique_ptr<tile_copy_t> paste; 
 
-    std::array<std::uint8_t, 16*256> chr = {};
     palette_model_t palette;
-    metatile_model_t metatiles;
+    std::deque<std::shared_ptr<metatile_model_t>> metatiles;
     std::deque<std::shared_ptr<level_model_t>> levels;
 
     std::deque<std::shared_ptr<object_class_t>> object_classes;
     object_t object_picker = {};
 
-    std::vector<attr_bitmaps_t> chr_bitmaps;
+    std::deque<chr_file_t> chr_files;
+
+    std::filesystem::path collision_path;
     std::vector<wxBitmap> collision_bitmaps;
-    std::vector<wxBitmap> metatile_bitmaps;
 
-    std::array<std::uint8_t, 16> active_palette_array();
-
-    void refresh_chr();
-    void refresh_metatiles();
+    palette_array_t palette_array(unsigned palette_index = 0);
 
     // Undo operations:
     undo_t undo(undo_t const& undo) { modify(); return std::visit(*this, undo); }
@@ -398,5 +415,14 @@ struct undo_history_t
         return std::holds_alternative<T>(history[UNDO].front());
     }
 };
+
+template<typename C>
+typename C::value_type* lookup_name(std::string const& name, C& c)
+{
+    for(auto& e : c)
+        if(e.name == name)
+            return &e;
+    return nullptr;
+}
 
 #endif

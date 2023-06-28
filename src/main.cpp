@@ -24,6 +24,7 @@
 #include "class.hpp"
 #include "id.hpp"
 #include "tool.hpp"
+#include "chr.hpp"
 
 using namespace i2d;
 
@@ -97,6 +98,7 @@ private:
     void on_save_as(wxCommandEvent& event);
     void do_save();
     void refresh_title();
+    void on_tab_change(wxNotebookEvent& event);
 
     template<undo_type_t U>
     void on_undo(wxCommandEvent& event)
@@ -134,7 +136,8 @@ private:
             copy->Enable(can_fill);
             fill->Enable(can_fill);
             fill_paste->Enable(can_fill && can_paste);
-            fill_attribute->Enable(can_fill && metatiles && model.metatiles.active < 4);
+            // TODO:
+            //fill_attribute->Enable(can_fill && metatiles && model.metatiles.active < 4);
         }
     }
 
@@ -174,15 +177,18 @@ private:
         watcher->Add(collisions_path);
     }
 
+    // TODO
     void load_chr()
     {
+        /*
         if(chr_path.IsEmpty())
             return;
         std::vector<std::uint8_t> data = read_binary_file(chr_path.c_str());
         model.chr.fill(0);
         std::copy_n(data.begin(), std::min(data.size(), model.chr.size()), model.chr.begin());
-        model.refresh_chr();
+        //model.refresh_chr(); TODO
         Refresh();
+        */
     }
 
     void load_collisions()
@@ -272,9 +278,9 @@ private:
 
     void on_fill_attribute(wxCommandEvent& event)
     {
-        if(editor_t* editor = get_editor())
+        if(auto* m = metatile_panel->object())
         {
-            editor->history.push(model.metatiles.chr_layer.fill_attribute());
+            metatile_panel->page()->history.push(m->chr_layer.fill_attribute());
             Refresh();
         }
     }
@@ -285,15 +291,16 @@ private:
         {
         default: return nullptr;
         case TAB_PALETTE: return palette_editor;
-        case TAB_METATILES: return metatile_editor;
+        case TAB_METATILES: return metatile_panel->page();;
         case TAB_LEVELS: return levels_panel->page();
         }
     }
 
     wxNotebook* notebook;
 
+    chr_editor_t* chr_editor;
     palette_editor_t* palette_editor;
-    metatile_editor_t* metatile_editor;
+    metatile_panel_t* metatile_panel;
     levels_panel_t* levels_panel;
     class_panel_t* class_panel;
 
@@ -400,11 +407,14 @@ MyFrame::MyFrame()
 
     notebook = new wxNotebook(this, wxID_ANY, wxDefaultPosition, wxSize(600, 300));
 
+    chr_editor = new chr_editor_t(notebook, model);
+    notebook->AddPage(chr_editor, wxT("CHR"));
+
     palette_editor = new palette_editor_t(notebook, model);
     notebook->AddPage(palette_editor, wxT("Palettes"));
 
-    metatile_editor = new metatile_editor_t(notebook, model);
-    notebook->AddPage(metatile_editor, wxT("Metatiles"));
+    metatile_panel = new metatile_panel_t(notebook, model);
+    notebook->AddPage(metatile_panel, wxT("Metatiles"));
 
     levels_panel = new levels_panel_t(notebook, model);
     notebook->AddPage(levels_panel, wxT("Levels"));
@@ -440,9 +450,12 @@ MyFrame::MyFrame()
     Bind(wxEVT_TOOL, &MyFrame::on_tool<TOOL_DROPPER>, this, ID_TOOL_DROPPER);
     Bind(wxEVT_TOOL, &MyFrame::on_tool<TOOL_SELECT>, this, ID_TOOL_SELECT);
 
+    notebook->Bind(wxEVT_NOTEBOOK_PAGE_CHANGING, &MyFrame::on_tab_change, this);
+
+
     Bind(wxEVT_UPDATE_UI, &MyFrame::update_ui, this);
 
-    model.refresh_chr();
+    //model.refresh_chr(); TODO
 
     Update();
 }
@@ -645,5 +658,14 @@ void MyFrame::refresh_title()
         title << path.stem().string() + " - MapFab";
         title << " - MapFab";
         SetTitle(title);
+    }
+}
+
+void MyFrame::on_tab_change(wxNotebookEvent& event)
+{
+    switch(event.GetSelection())
+    {
+    default: break;
+    case TAB_METATILES: return metatile_panel->page_changed();
     }
 }

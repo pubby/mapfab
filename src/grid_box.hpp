@@ -22,9 +22,11 @@ enum mouse_button_t
 
 enum
 {
-    TAB_PALETTE = 0,
-    TAB_METATILES = 1,
-    TAB_LEVELS = 2,
+    TAB_CHR,
+    TAB_PALETTE,
+    TAB_METATILES,
+    TAB_LEVELS,
+    TAB_CLASSES,
 };
 
 class editor_t;
@@ -182,6 +184,7 @@ public:
         Bind(wxEVT_MENU, &tab_panel_t::on_delete_page, this, ID_R_DELETE_PAGE);
         Bind(wxEVT_MENU, &tab_panel_t::on_rename_page, this, ID_R_RENAME_PAGE);
         Bind(wxEVT_MENU, &tab_panel_t::on_clone_page, this, ID_R_CLONE_PAGE);
+        Bind(wxEVT_NOTEBOOK_PAGE_CHANGING, &tab_panel_t::on_page_changing, this);
     }
 
     page_type& page(int i) { return *static_cast<page_type*>(notebook->GetPage(i)); }
@@ -191,6 +194,15 @@ public:
         if(notebook->GetSelection() == wxNOT_FOUND)
             return nullptr;
         return &page(notebook->GetSelection());
+    }
+
+    object_type& object(int i) { return *collection().at(i).get(); }
+
+    object_type* object()
+    {
+        if(notebook->GetSelection() == wxNOT_FOUND)
+            return nullptr;
+        return &object(notebook->GetSelection());
     }
 
     void load_pages()
@@ -225,11 +237,20 @@ public:
         }
 
         auto& object = collection().emplace_back(std::make_shared<object_type>());
+        assert(collection().back());
         auto* page = new page_type(notebook, model, object);
         wxString const name = make_string();
         notebook->AddPage(page, name);
         object->name = name.ToStdString();
     }
+
+    void prepare_page(int i)
+    {
+        P::on_page_changing(page(i), object(i));
+    }
+
+    void on_page_changing(wxNotebookEvent& event) { prepare_page(event.GetSelection()); }
+    void page_changed() { prepare_page(notebook->GetSelection()); }
 
     void on_right_click(wxMouseEvent& event)
     {
@@ -247,7 +268,7 @@ public:
 
         PopupMenu(&tab_menu);
     }
-
+    
     void on_new_page(wxCommandEvent& event) { new_page(); }
 
     void on_delete_page(wxCommandEvent& event)
