@@ -18,7 +18,7 @@
 
 using namespace i2d;
 
-void draw_metatile(metatile_model_t const& model, wxDC& dc, std::uint8_t tile, coord_t at);
+void draw_metatile(level_model_t const& model, wxDC& dc, std::uint8_t tile, coord_t at);
 
 class object_field_t : public wxPanel
 {
@@ -49,7 +49,6 @@ private:
     wxTextCtrl* name;
     wxSpinCtrl* x_ctrl;
     wxSpinCtrl* y_ctrl;
-    wxSpinCtrl* i_ctrl;
 
     std::unique_ptr<wxPanel> field_panel;
 
@@ -87,8 +86,7 @@ private:
 
     virtual void draw_tile(wxDC& dc, unsigned tile, coord_t at) override 
     { 
-        if(level->metatiles) 
-            draw_metatile(*level->metatiles, dc, tile, at); 
+        draw_metatile(*level, dc, tile, at); 
     }
     virtual void draw_tiles(wxDC& dc) override;
 };
@@ -104,8 +102,7 @@ public:
 
     virtual void draw_tile(wxDC& dc, unsigned tile, coord_t at) override 
     { 
-        if(level->metatiles)
-            draw_metatile(*level->metatiles, dc, tile, at); 
+        draw_metatile(*level, dc, tile, at); 
     }
     virtual void draw_tiles(wxDC& dc) override;
 
@@ -120,7 +117,7 @@ public:
     virtual void on_up(mouse_button_t mb, coord_t at) override;
     virtual void on_motion(coord_t at) override;
 
-    virtual bool enable_tile_select() const { return false; }
+    virtual bool enable_tile_select() const { return level->current_layer == TILE_LAYER; }
 
 private:
     std::shared_ptr<level_model_t> level;
@@ -139,6 +136,7 @@ public:
 
     virtual void on_update() override;
     level_model_t& level_model() { return *level; }
+    auto ptr() { return level.get(); }
 
     model_t& model;
 private:
@@ -150,6 +148,9 @@ private:
     wxSpinCtrl* width_ctrl;
     wxSpinCtrl* height_ctrl;
     wxPanel* object_panel;
+    wxComboBox* metatiles_combo;
+    wxComboBox* chr_combo;
+    wxTextCtrl* macro_ctrl;
     std::array<wxRadioButton*, 2> layers;
 
     int last_palette = -1;
@@ -157,30 +158,40 @@ private:
     int last_height = -1;
 
     virtual canvas_box_t& canvas_box() override { return *canvas; }
+    virtual tile_copy_t copy(bool cut) override;
 
+    void on_radio(wxCommandEvent& event);
     void on_change_palette(wxSpinEvent& event);
     void on_change_width(wxSpinEvent& event);
     void on_change_height(wxSpinEvent& event);
     void on_pick_object(wxCommandEvent& event);
+    void on_macro_name(wxCommandEvent& event);
 
-    bool confirm_object();
+    void on_metatiles_select(wxCommandEvent& event);
+    void on_metatiles_text(wxCommandEvent& event);
+    void on_chr_select(wxCommandEvent& event);
+    void on_chr_text(wxCommandEvent& event);
+    void on_delete(wxCommandEvent& event);
+
+    template<unsigned I>
+    void on_active(wxCommandEvent& event) { on_active(I); }
+    void on_active(unsigned i);
+public:
+    void model_refresh();
+    void load_metatiles();
 };
 
 struct level_policy_t
 {
     using object_type = level_model_t;
     using page_type = level_editor_t;
-    static constexpr char const* name = "level";
+    static constexpr char const* name = "Level";
     static auto& collection(model_t& m) { return m.levels; }
     static void on_page_changing(page_type& page, object_type& object) 
     {
-        if(object.metatiles)
-        {
-            // TODO
-            //object.metatiles->refresh_chr(page.model.chr, page.model.palette_array(object.palette));
-            //object.metatiles->refresh_metatiles();
-        }
+        page.model_refresh();
     }
+    static void rename(model_t& m, std::string const& old_name, std::string const& new_name) {}
 };
 
 class levels_panel_t : public tab_panel_t<level_policy_t>
@@ -190,9 +201,6 @@ public:
     : tab_panel_t<level_policy_t>(parent, model)
     {
         load_pages();
-        new_page();
-        new_page();
-        new_page();
     }
 };
 

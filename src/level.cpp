@@ -1,6 +1,8 @@
 #include "level.hpp"
 
-void draw_metatile(metatile_model_t const& model, wxDC& dc, std::uint8_t tile, coord_t at)
+#include <ranges>
+
+void draw_metatile(level_model_t const& model, wxDC& dc, std::uint8_t tile, coord_t at)
 {
     if(tile < model.metatile_bitmaps.size())
         dc.DrawBitmap(model.metatile_bitmaps[tile], { at.x, at.y }, false);
@@ -70,15 +72,6 @@ object_dialog_t::object_dialog_t(wxWindow* parent, model_t& model, object_t& obj
         sizer->Add(combo, 0, wxALL, 2);
         sizer->AddSpacer(16);
 
-        wxStaticText* i_label = new wxStaticText(name_panel, wxID_ANY, "Index:");
-        i_label->Enable(!picker);
-        i_ctrl= new wxSpinCtrl(name_panel);
-        i_ctrl->SetRange(0, 255);
-        i_ctrl->Enable(!picker);
-        sizer->Add(i_label, 0, wxALL | wxCENTER, 2);
-
-        sizer->Add(i_ctrl, 0, wxALL, 2);
-
         name_panel->SetSizer(sizer);
     }
     main_sizer->Add(name_panel, 0, wxALL, 2);
@@ -141,7 +134,6 @@ object_dialog_t::object_dialog_t(wxWindow* parent, model_t& model, object_t& obj
     name->Bind(wxEVT_TEXT, &object_dialog_t::on_name, this);
     x_ctrl->Bind(wxEVT_SPINCTRL, &object_dialog_t::on_change_x, this);
     y_ctrl->Bind(wxEVT_SPINCTRL, &object_dialog_t::on_change_y, this);
-    i_ctrl->Bind(wxEVT_SPINCTRL, &object_dialog_t::on_change_i, this);
     reset_button->Bind(wxEVT_BUTTON, &object_dialog_t::on_reset, this);
 }
 
@@ -170,7 +162,6 @@ void object_dialog_t::load_object()
 {
     if(!picker)
     {
-        i_ctrl->SetValue(object.index);
         x_ctrl->SetValue(object.position.x);
         y_ctrl->SetValue(object.position.y);
     }
@@ -253,7 +244,7 @@ void object_dialog_t::on_change_i(wxSpinEvent& event)
 
 void object_dialog_t::on_reset(wxCommandEvent& event)
 {
-    object = object_t{ .index = object.index, .position = object.position };
+    object = object_t{ .position = object.position };
     load_object();
     GetParent()->Refresh();
 }
@@ -309,6 +300,17 @@ void level_canvas_t::draw_tiles(wxDC& dc)
 
     // Objects:
     dc.SetLogicalScale(1.0f / scale, 1.0f / scale);
+
+    for(unsigned i = 0; i < level->objects.size(); ++i)
+    {
+        auto const& object = level->objects[i];
+        coord_t const at = vec_mul(crop(object.position) + to_coord(margin()), scale);
+
+        dc.SetPen(wxPen());
+        dc.SetBrush(wxBrush(wxColor(255, 255, 255, 32)));
+        dc.DrawCircle(at.x, at.y, object_radius() * 3 / 2);
+    }
+
     for(unsigned i = 0; i < level->objects.size(); ++i)
     {
         auto const& object = level->objects[i];
@@ -362,105 +364,115 @@ void level_canvas_t::draw_tiles(wxDC& dc)
 
 void level_canvas_t::on_down(mouse_button_t mb, coord_t at)
 {
-    coord_t const pixel256 = from_screen(at, {1,1}, 256);
-    coord_t const pixel = from_screen(at, {1,1});
-    bool const shift = wxGetKeyState(WXK_SHIFT);
-    selecting_objects = false;
-
-    if(model.tool == TOOL_STAMP || model.tool == TOOL_SELECT)
+    if(level->current_layer == OBJECT_LAYER)
     {
-        for(int i : level->object_selector)
-        {
-            auto& object = level->objects[i];
-            coord_t const at = crop(object.position) + to_coord(margin());
+        coord_t const pixel256 = from_screen(at, {1,1}, 256);
+        coord_t const pixel = from_screen(at, {1,1});
+        bool const shift = wxGetKeyState(WXK_SHIFT);
+        selecting_objects = false;
 
-            if(e_dist(vec_mul(at, 256), pixel256) <= object_radius() * 256.0 / scale)
+        if(model.tool == TOOL_STAMP || model.tool == TOOL_SELECT)
+        {
+            for(int i : level->object_selector)
             {
-                if(mb == MB_LEFT)
+                auto& object = level->objects[i];
+                coord_t const at = crop(object.position) + to_coord(margin());
+
+                if(e_dist(vec_mul(at, 256), pixel256) <= object_radius() * 256.0 / scale)
                 {
-                    CallAfter([&]()
+                    if(mb == MB_LEFT)
                     {
-                        object_dialog_t dialog(this, model, object);
-                        dialog.ShowModal();
-                        dialog.Destroy();
-                        SetFocus();
-                    });
-                    goto selected;
+                        CallAfter([&, i]()
+                        {
+                            object_t prev = object;
+
+                            object_dialog_t dialog(this, model, object);
+                            dialog.ShowModal();
+                            dialog.Destroy();
+                            SetFocus();
+
+                            if(prev != object)
+                                static_cast<level_editor_t*>(GetParent())->history.push(undo_edit_object_t{ level.get(), i, std::move(prev) });
+                        });
+                        goto selected;
+                    }
                 }
             }
-        }
 
-        for(int i = level->objects.size() - 1; i >= 0; --i)
-        {
-            auto const& object = level->objects[i];
-            coord_t const at = crop(object.position) + to_coord(margin());
-
-            if(e_dist(vec_mul(at, 256), pixel256) <= object_radius() * 256.0 / scale)
+            for(int i = level->objects.size() - 1; i >= 0; --i)
             {
-                if(mb == MB_LEFT)
+                auto const& object = level->objects[i];
+                coord_t const at = crop(object.position) + to_coord(margin());
+
+                if(e_dist(vec_mul(at, 256), pixel256) <= object_radius() * 256.0 / scale)
                 {
-                    if(!shift)
-                        level->object_selector.clear();
-                    level->object_selector.insert(i);
-                }
-                else if(mb == MB_RIGHT)
-                {
-                    if(!level->object_selector.count(i))
+                    if(mb == MB_LEFT)
                     {
                         if(!shift)
                             level->object_selector.clear();
                         level->object_selector.insert(i);
                     }
+                    else if(mb == MB_RIGHT)
+                    {
+                        if(!level->object_selector.count(i))
+                        {
+                            if(!shift)
+                                level->object_selector.clear();
+                            level->object_selector.insert(i);
+                        }
+
+                        dragging_objects = true;
+                        drag_last = pixel;
+                    }
+
+                    goto selected;
+                }
+            }
+
+            if(model.tool == TOOL_SELECT)
+            {
+                if(mb == MB_RIGHT)
+                {
+                    for(int i = level->objects.size() - 1; i >= 0; --i)
+                    {
+                        auto const& object = level->objects[i];
+                        coord_t const at = crop(object.position) + to_coord(margin());
+
+                        if(e_dist(vec_mul(at, 256), pixel256) <= object_radius() * 256.0 / scale)
+                        {
+                            if(!shift && !level->object_selector.count(i))
+                                level->object_selector.clear();
+                            level->object_selector.insert(i);
+                            dragging_objects = true;
+                            drag_last = pixel;
+                            return;
+                        }
+                    }
+                }
+
+                object_select_start = at;
+                selecting_objects = true;
+                return;
+            }
+            else if(model.tool == TOOL_STAMP)
+            {
+                level->object_selector.clear();
+
+                if(mb == MB_LEFT && !dragging_objects)
+                {
+                    level->object_selector.insert(level->objects.size());
+
+                    object_t object = model.object_picker;
+                    object.position = pixel;
+
+
+                    static_cast<level_editor_t*>(GetParent())->history.push(undo_new_object_t{ level.get(), { level->objects.size() } });
+                    level->objects.push_back(std::move(object));
 
                     dragging_objects = true;
                     drag_last = pixel;
+                    goto selected;
                 }
-
-                goto selected;
-            }
-        }
-
-        if(model.tool == TOOL_SELECT)
-        {
-            if(mb == MB_RIGHT)
-            {
-                for(int i = level->objects.size() - 1; i >= 0; --i)
-                {
-                    auto const& object = level->objects[i];
-                    coord_t const at = crop(object.position) + to_coord(margin());
-
-                    if(e_dist(vec_mul(at, 256), pixel256) <= object_radius() * 256.0 / scale)
-                    {
-                        if(!shift && !level->object_selector.count(i))
-                            level->object_selector.clear();
-                        level->object_selector.insert(i);
-                        dragging_objects = true;
-                        drag_last = pixel;
-                        return;
-                    }
-                }
-            }
-
-            object_select_start = at;
-            selecting_objects = true;
-            return;
-        }
-        else if(model.tool == TOOL_STAMP)
-        {
-            level->object_selector.clear();
-
-            if(mb == MB_LEFT && !dragging_objects)
-            {
-                level->object_selector.insert(level->objects.size());
-
-                object_t object = model.object_picker;
-                object.index = level->objects.size();
-                object.position = pixel;
-                level->objects.push_back(std::move(object));
-
-                dragging_objects = true;
-                drag_last = pixel;
-                goto selected;
             }
         }
     }
@@ -468,37 +480,42 @@ void level_canvas_t::on_down(mouse_button_t mb, coord_t at)
 selected:
     Refresh();
 
-    canvas_box_t::on_down(mb, at);
+    if(level->current_layer == TILE_LAYER)
+        canvas_box_t::on_down(mb, at);
 }
 
 void level_canvas_t::on_up(mouse_button_t mb, coord_t at)
 {
-    bool const shift = wxGetKeyState(WXK_SHIFT);
-    dragging_objects = false;
-
-    if(selecting_objects && model.tool == TOOL_SELECT)
+    if(level->current_layer == OBJECT_LAYER)
     {
-        if(mb == MB_LEFT && !shift)
-            level->object_selector.clear();
+        bool const shift = wxGetKeyState(WXK_SHIFT);
+        dragging_objects = false;
 
-        rect_t const r = rect_from_2_coords(from_screen(object_select_start, {1,1}), from_screen(at, {1,1}));
-
-        for(int i = 0; i < level->objects.size(); ++i)
+        if(selecting_objects && model.tool == TOOL_SELECT)
         {
-            auto const& object = level->objects[i];
-            coord_t const at = crop(object.position);
+            if(mb == MB_LEFT && !shift)
+                level->object_selector.clear();
 
-            if(in_bounds(at, r))
+            rect_t const r = rect_from_2_coords(from_screen(object_select_start, {1,1}), from_screen(at, {1,1}));
+
+            for(int i = 0; i < level->objects.size(); ++i)
             {
-                if(mb == MB_LEFT)
-                    level->object_selector.insert(i);
-                else
-                    level->object_selector.erase(i);
+                auto const& object = level->objects[i];
+                coord_t const at = crop(object.position);
+
+                if(in_bounds(at, r))
+                {
+                    if(mb == MB_LEFT)
+                        level->object_selector.insert(i);
+                    else
+                        level->object_selector.erase(i);
+                }
             }
         }
     }
 
-    canvas_box_t::on_up(mb, at);
+    if(level->current_layer == TILE_LAYER)
+        canvas_box_t::on_up(mb, at);
 }
 
 void level_canvas_t::on_motion(coord_t at)
@@ -533,7 +550,7 @@ level_editor_t::level_editor_t(wxWindow* parent, model_t& model, std::shared_ptr
     object_panel = new wxPanel(left_panel);
     object_panel->SetMinSize(wxSize(256 + 16, 0));
     wxButton* edit_button = new wxButton(object_panel, wxID_ANY, "Edit");
-    edit_button->SetMinSize(wxSize(256, 64));
+    edit_button->SetMinSize(wxSize(256, 128));
     auto* object_text = new wxStaticText(object_panel, wxID_ANY, "Object Picker");
     {
         wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
@@ -541,24 +558,42 @@ level_editor_t::level_editor_t(wxWindow* parent, model_t& model, std::shared_ptr
         sizer->Add(edit_button, wxSizerFlags().Border(wxLEFT));
         object_panel->SetSizer(sizer);
     }
+    object_panel->Hide();
 
-    auto* combo_text = new wxStaticText(left_panel, wxID_ANY, "Object Layer");
-    wxString choices[] = { "Choice 1", "Choice 2", "Choice 3" };
-    wxComboBox* combo = new wxComboBox(left_panel, wxID_ANY, choices[0], wxDefaultPosition, wxDefaultSize, WXSIZEOF(choices), choices, wxCB_DROPDOWN);
+    auto* macro_label = new wxStaticText(left_panel, wxID_ANY, "Macro");
+    macro_ctrl = new wxTextCtrl(left_panel, wxID_ANY);
+    macro_ctrl->SetValue(level->macro_name);
+
+    auto* metatiles_label = new wxStaticText(left_panel, wxID_ANY, "Metatiles");
+    metatiles_combo = new wxComboBox(left_panel, wxID_ANY);
+
+    auto* chr_label = new wxStaticText(left_panel, wxID_ANY, "CHR");
+    chr_combo = new wxComboBox(left_panel, wxID_ANY);
 
     auto* palette_text = new wxStaticText(left_panel, wxID_ANY, "Palette");
     palette_ctrl = new wxSpinCtrl(left_panel);
     palette_ctrl->SetRange(0, 255);
 
-    auto* width_text = new wxStaticText(left_panel, wxID_ANY, "Width");
-    width_ctrl = new wxSpinCtrl(left_panel);
-    width_ctrl->SetRange(1, 128);
-    width_ctrl->SetValue(level->dimen().w);
+    auto* dimensions_text = new wxStaticText(left_panel, wxID_ANY, "Dimensions");
+    wxPanel* dimensions_panel = new wxPanel(left_panel);
+    {
+        wxBoxSizer* sizer = new wxBoxSizer(wxHORIZONTAL);
 
-    auto* height_text = new wxStaticText(left_panel, wxID_ANY, "Height");
-    height_ctrl = new wxSpinCtrl(left_panel);
-    height_ctrl->SetRange(1, 128);
-    height_ctrl->SetValue(level->dimen().h);
+        width_ctrl = new wxSpinCtrl(dimensions_panel);
+        width_ctrl->SetRange(1, 256);
+        width_ctrl->SetValue(level->dimen().w);
+
+        height_ctrl = new wxSpinCtrl(dimensions_panel);
+        height_ctrl->SetRange(1, 256);
+        height_ctrl->SetValue(level->dimen().h);
+
+        sizer->Add(width_ctrl, wxSizerFlags().Border(wxRIGHT));
+        sizer->Add(height_ctrl, wxSizerFlags());
+        dimensions_panel->SetSizer(sizer);
+    }
+
+    layers[0] = new wxRadioButton(left_panel, wxID_ANY, "Tile Layer    (F1)", wxDefaultPosition, wxDefaultSize, wxRB_GROUP);
+    layers[1] = new wxRadioButton(left_panel, wxID_ANY, "Object Layer  (F2)");
 
     canvas = new level_canvas_t(this, model, level);
 
@@ -566,14 +601,18 @@ level_editor_t::level_editor_t(wxWindow* parent, model_t& model, std::shared_ptr
         wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
         sizer->Add(picker, wxSizerFlags().Expand().Proportion(1));
         sizer->Add(object_panel, wxSizerFlags().Expand().Proportion(1));
-        sizer->Add(combo_text, wxSizerFlags().Border(wxLEFT));
-        sizer->Add(combo, wxSizerFlags().Border(wxLEFT | wxDOWN));
-        sizer->Add(width_text, wxSizerFlags().Border(wxLEFT));
-        sizer->Add(width_ctrl, wxSizerFlags().Border(wxLEFT | wxDOWN));
-        sizer->Add(height_text, wxSizerFlags().Border(wxLEFT));
-        sizer->Add(height_ctrl, wxSizerFlags().Border(wxLEFT | wxDOWN));
+        for(auto* ptr : layers)
+            sizer->Add(ptr, wxSizerFlags().Border(wxLEFT));
+        sizer->Add(macro_label, wxSizerFlags().Border(wxLEFT | wxUP));
+        sizer->Add(macro_ctrl, wxSizerFlags().Border(wxLEFT | wxDOWN));
+        sizer->Add(metatiles_label, wxSizerFlags().Border(wxLEFT));
+        sizer->Add(metatiles_combo, wxSizerFlags().Border(wxLEFT | wxDOWN));
+        sizer->Add(chr_label, wxSizerFlags().Border(wxLEFT));
+        sizer->Add(chr_combo, wxSizerFlags().Border(wxLEFT | wxDOWN));
         sizer->Add(palette_text, wxSizerFlags().Border(wxLEFT));
-        sizer->Add(palette_ctrl, wxSizerFlags().Border(wxLEFT));
+        sizer->Add(palette_ctrl, wxSizerFlags().Border(wxLEFT | wxDOWN));
+        sizer->Add(dimensions_text, wxSizerFlags().Border(wxLEFT));
+        sizer->Add(dimensions_panel, wxSizerFlags().Border(wxLEFT));
         sizer->AddSpacer(8);
         left_panel->SetSizer(sizer);
     }
@@ -585,10 +624,61 @@ level_editor_t::level_editor_t(wxWindow* parent, model_t& model, std::shared_ptr
         SetSizer(sizer);
     }
 
+    // Create an accelerator table with keyboard shortcuts
+    wxAcceleratorEntry entries[3];
+    entries[0].Set(wxACCEL_NORMAL, WXK_F1, ID_LAYER0);
+    entries[1].Set(wxACCEL_NORMAL, WXK_F2, ID_LAYER1);
+    entries[2].Set(wxACCEL_NORMAL, WXK_DELETE, ID_DELETE_OBJ);
+    wxAcceleratorTable accel(3, entries);
+
+    // Set the accelerator table for the frame
+    SetAcceleratorTable(accel);
+
+    for(auto* ptr : layers)
+        ptr->Bind(wxEVT_RADIOBUTTON, &level_editor_t::on_radio, this);
+    Bind(wxEVT_MENU, &level_editor_t::on_active<0>, this, ID_LAYER0);
+    Bind(wxEVT_MENU, &level_editor_t::on_active<1>, this, ID_LAYER1);
+    Bind(wxEVT_MENU, &level_editor_t::on_delete, this, ID_DELETE_OBJ);
     palette_ctrl->Bind(wxEVT_SPINCTRL, &level_editor_t::on_change_palette, this);
     width_ctrl->Bind(wxEVT_SPINCTRL, &level_editor_t::on_change_width, this);
     height_ctrl->Bind(wxEVT_SPINCTRL, &level_editor_t::on_change_height, this);
     edit_button->Bind(wxEVT_BUTTON, &level_editor_t::on_pick_object, this);
+    metatiles_combo->Bind(wxEVT_COMBOBOX, &level_editor_t::on_metatiles_select, this);
+    metatiles_combo->Bind(wxEVT_TEXT, &level_editor_t::on_metatiles_text, this);
+    chr_combo->Bind(wxEVT_COMBOBOX, &level_editor_t::on_chr_select, this);
+    chr_combo->Bind(wxEVT_TEXT, &level_editor_t::on_chr_text, this);
+    macro_ctrl->Bind(wxEVT_TEXT, &level_editor_t::on_macro_name, this);
+
+    model_refresh();
+}
+
+void level_editor_t::on_active(unsigned i)
+{
+    level->current_layer = level_layer_t(i);
+
+    if(i == 0)
+    {
+        picker->Show(true);
+        object_panel->Hide();
+    }
+    else
+    {
+        picker->Hide();
+        object_panel->Show(true);
+    }
+
+    layers[i]->SetValue(true);
+
+    Layout();
+    Refresh();
+}
+
+void level_editor_t::on_radio(wxCommandEvent& event)
+{
+    wxRadioButton* radio = dynamic_cast<wxRadioButton*>(event.GetEventObject());
+    for(unsigned layer = 0; layer < layers.size(); ++layer)
+        if(radio == layers[layer])
+            return on_active(layer);
 }
 
 void level_editor_t::on_update()
@@ -606,16 +696,9 @@ void level_editor_t::on_update()
 
 void level_editor_t::on_change_palette(wxSpinEvent& event)
 {
-    if(!history.on_top<undo_level_palette_t>())
-        history.push(undo_level_palette_t{ level.get(), level->palette });
     level->palette = event.GetPosition(); 
-    //model.refresh_chr(); // TODO
     model.modify();
-
-    // TODO:
-    picker->Hide();
-    Layout();
-
+    load_metatiles();
     Refresh();
 
 }
@@ -650,8 +733,91 @@ void level_editor_t::on_pick_object(wxCommandEvent& event)
     SetFocus();
 }
 
-bool level_editor_t::confirm_object()
+void level_editor_t::model_refresh()
 {
-    wxMessageDialog dialog(this, "Save changes?", "Warning", wxYES | wxNO | wxICON_WARNING);
-    return dialog.ShowModal() == wxID_YES;
+    std::string const metatiles_name = level->metatiles_name;
+    std::string const chr_name = level->chr_name;
+
+    metatiles_combo->Clear();
+    for(auto const& metatiles : model.metatiles)
+        metatiles_combo->Append(metatiles->name);
+    metatiles_combo->SetValue(metatiles_name);
+
+    chr_combo->Clear();
+    for(auto const& chr : model.chr_files)
+        chr_combo->Append(chr.name);
+    chr_combo->SetValue(chr_name);
+
+    load_metatiles();
+}
+
+void level_editor_t::load_metatiles()
+{
+    auto* chr_file = lookup_name(level->chr_name, model.chr_files);
+    auto* metatiles = lookup_name_ptr(level->metatiles_name, model.metatiles).get();
+    if(chr_file && metatiles)
+        level->refresh_metatiles(*metatiles, chr_file->chr, model.palette_array(level->palette));
+    else
+        level->clear_metatiles();
+    Refresh();
+}
+
+void level_editor_t::on_metatiles_select(wxCommandEvent& event)
+{
+    int const index = event.GetSelection();
+    if(index >= 0 && index < model.metatiles.size())
+        level->metatiles_name = model.metatiles[index]->name;
+    load_metatiles();
+}
+
+void level_editor_t::on_metatiles_text(wxCommandEvent& event)
+{
+    level->metatiles_name = metatiles_combo->GetValue();
+    load_metatiles();
+}
+
+void level_editor_t::on_chr_select(wxCommandEvent& event)
+{
+    int const index = event.GetSelection();
+    if(index >= 0 && index < model.chr_files.size())
+        level->chr_name = model.chr_files[index].name;
+    load_metatiles();
+}
+
+void level_editor_t::on_chr_text(wxCommandEvent& event)
+{
+    level->chr_name = chr_combo->GetValue();
+    load_metatiles();
+}
+
+void level_editor_t::on_delete(wxCommandEvent& event)
+{
+    if(level->object_selector.empty())
+        return;
+
+    undo_delete_object_t undo = { level.get() };
+
+    for(int i : level->object_selector)
+        undo.objects.emplace_back(i, level->objects.at(i));
+
+    history.push(std::move(undo));
+
+    for(int i : level->object_selector | std::views::reverse)
+        level->objects.erase(level->objects.begin() + i);
+
+    level->object_selector.clear();
+    Refresh();
+}
+
+void level_editor_t::on_macro_name(wxCommandEvent& event)
+{ 
+    level->macro_name = event.GetString().ToStdString(); 
+}
+
+tile_copy_t level_editor_t::copy(bool cut)
+{
+    if(level->current_layer == OBJECT_LAYER)
+        ; // TODO
+    else
+        return editor_t::copy(cut);
 }

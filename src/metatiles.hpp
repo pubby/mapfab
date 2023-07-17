@@ -57,6 +57,7 @@ public:
 
     virtual void on_update() override;
     virtual canvas_box_t& canvas_box() override { return *canvas; }
+    auto ptr() { return metatiles.get(); }
 
     model_t& model;
 
@@ -68,6 +69,7 @@ private:
     metatile_canvas_t* canvas;
     wxSpinCtrl* palette_ctrl;
     wxComboBox* chr_combo;
+    wxSpinCtrl* num_ctrl;
     std::array<wxRadioButton*, 5> attributes;
     int last_palette = -1;
 
@@ -79,15 +81,23 @@ private:
     template<unsigned I>
     void on_active(wxCommandEvent& event) { on_active(I); }
     void on_active(unsigned i);
+
+    void on_num(wxCommandEvent& event);
 };
 
 struct metatile_policy_t
 {
     using object_type = metatile_model_t;
     using page_type = metatile_editor_t;
-    static constexpr char const* name = "metatile";
+    static constexpr char const* name = "Metatiles";
     static auto& collection(model_t& m) { return m.metatiles; }
     static void on_page_changing(page_type& page, object_type& object) { page.model_refresh(); }
+    static void rename(model_t& m, std::string const& old_name, std::string const& new_name)
+    {
+        for(auto& level : m.levels)
+            if(level->metatiles_name == old_name)
+                level->metatiles_name = new_name;
+    }
 };
 
 class metatile_panel_t : public tab_panel_t<metatile_policy_t>
@@ -97,9 +107,6 @@ public:
     : tab_panel_t<metatile_policy_t>(parent, model)
     {
         load_pages();
-        new_page();
-        new_page();
-        new_page();
     }
 };
 

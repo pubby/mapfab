@@ -29,21 +29,25 @@ public:
     field_def_t(wxWindow* parent, class_field_t const& field, unsigned index);
 
     void on_click(wxCommandEvent& event);
-    void on_type(wxCommandEvent& event);
-    void on_name(wxCommandEvent& event);
+    void on_retype(wxCommandEvent& event);
+    void on_rename(wxCommandEvent& event);
 
     unsigned index = 0;
+    wxTextCtrl* type_entry;
+    wxTextCtrl* name_entry;
+    class_field_t const& field;
 };
 
 class class_editor_t : public wxScrolledWindow
 {
 public:
     class_editor_t(wxWindow* parent, model_t& model, std::shared_ptr<object_class_t> oc_);
+    auto ptr() { return oc.get(); }
 
     void on_delete(unsigned index);
     void on_new(wxCommandEvent& event);
-    void on_type(unsigned index, std::string str);
-    void on_name(unsigned index, std::string str);
+    void on_retype(unsigned index, std::string str);
+    void on_rename(unsigned index, std::string str);
     void on_color(wxColourPickerEvent& event);
 
 private:
@@ -60,9 +64,16 @@ struct class_policy_t
 {
     using object_type = object_class_t;
     using page_type = class_editor_t;
-    static constexpr char const* name = "class";
+    static constexpr char const* name = "Object Class";
     static auto& collection(model_t& m) { return m.object_classes; }
     static void on_page_changing(page_type& page, object_type& object) {}
+    static void rename(model_t& m, std::string const& old_name, std::string const& new_name)
+    {
+        for(auto& level : m.levels)
+            for(auto& object : level->objects)
+                if(object.oclass == old_name)
+                    object.oclass = new_name;
+    }
 };
 
 class class_panel_t : public tab_panel_t<class_policy_t>
@@ -72,7 +83,6 @@ public:
     : tab_panel_t<class_policy_t>(parent, model)
     {
         load_pages();
-        new_page();
     }
 };
 

@@ -9,39 +9,43 @@
 file_def_t::file_def_t(wxWindow* parent, chr_file_t const& file, unsigned index)
 : wxPanel(parent, wxID_ANY)
 , index(index)
+, file(file)
 {
     wxBoxSizer* row_sizer = new wxBoxSizer(wxHORIZONTAL);
 
     wxStaticText* name_label = new wxStaticText(this, wxID_ANY, "CHR Name:", wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT);
-    wxTextCtrl* name_entry = new wxTextCtrl(this, wxID_ANY, file.name);
+    name_entry = new wxTextCtrl(this, wxID_ANY, file.name);
     name_entry->SetMinSize(wxSize(150, 24));
     name_entry->SetMaxSize(wxSize(300, 24));
+    name_entry->SetWindowStyleFlag(wxTE_READONLY);
 
     wxStaticText* path_label = new wxStaticText(this, wxID_ANY, "Path:", wxDefaultPosition, wxDefaultSize, wxALIGN_LEFT);
 
     filename = new wxTextCtrl(this, wxID_ANY);
     filename->SetValue(file.path.string());
     filename->SetWindowStyleFlag(wxTE_READONLY);
-    filename->SetMinSize(wxSize(400, 24));
-    filename->SetMaxSize(wxSize(400, 24));
+    filename->SetMinSize(wxSize(300, 24));
+    filename->SetMaxSize(wxSize(300, 24));
 
+    wxButton* rename_button = new wxButton(this, wxID_ANY, "Rename");
     wxButton* open_button = new wxButton(this, wxID_ANY, "Set Path");
     wxButton* delete_button = new wxButton(this, wxID_ANY, "Delete");
 
     row_sizer->Add(name_label, wxSizerFlags().Left().Border().Center());
     row_sizer->Add(name_entry, wxSizerFlags().Left().Border().Center());
+    row_sizer->Add(rename_button, wxSizerFlags().Left().Border().Center());
     row_sizer->AddSpacer(16);
     row_sizer->Add(path_label, wxSizerFlags().Left().Border().Center());
     row_sizer->AddSpacer(16);
     row_sizer->Add(filename, wxSizerFlags().Left().Border().Center());
     row_sizer->AddSpacer(16);
     row_sizer->Add(open_button, wxSizerFlags().Left().Border().Center());
-    row_sizer->AddSpacer(4);
     row_sizer->Add(delete_button, wxSizerFlags().Left().Border().Center());
 
+    rename_button->Bind(wxEVT_COMMAND_BUTTON_CLICKED, &file_def_t::on_rename, this);
     delete_button->Bind(wxEVT_COMMAND_BUTTON_CLICKED, &file_def_t::on_delete, this);
     open_button->Bind(wxEVT_COMMAND_BUTTON_CLICKED, &file_def_t::on_open, this);
-    name_entry->Bind(wxEVT_TEXT, &file_def_t::on_name, this);
+    //name_entry->Bind(wxEVT_TEXT, &file_def_t::on_name, this);
 
     SetSizerAndFit(row_sizer);
 }
@@ -68,9 +72,18 @@ void file_def_t::on_open(wxCommandEvent& event)
     }
 }
 
-void file_def_t::on_name(wxCommandEvent& event)
+void file_def_t::on_rename(wxCommandEvent& event)
 { 
-    static_cast<chr_editor_t*>(GetParent())->on_name(index, event.GetString().ToStdString()); 
+    wxTextEntryDialog dialog(
+        this, "Rename", "Rename CHR:", file.name);
+
+    if(dialog.ShowModal() == wxID_OK)
+    {
+        std::string new_name = dialog.GetValue().ToStdString();
+        static_cast<chr_editor_t*>(GetParent())->on_rename(index, new_name); 
+        name_entry->SetValue(file.name);
+    }
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -161,13 +174,50 @@ void chr_editor_t::on_delete(unsigned index)
 
 void chr_editor_t::on_new(wxCommandEvent& event)
 {
-    new_file(model.chr_files.emplace_back());
-    Fit();
+    wxTextEntryDialog dialog(
+        this, "Name:", "New CHR");
+
+    if(dialog.ShowModal() == wxID_OK)
+    {
+        std::string new_name = dialog.GetValue().ToStdString();
+
+        for(unsigned i = 0; i < model.chr_files.size(); ++i)
+        {
+            if(model.chr_files[i].name == new_name)
+            {
+                wxMessageBox( wxT("Names must be unique."), wxT("Error"), wxICON_ERROR);
+                return;
+            }
+        }
+
+        auto& file = model.chr_files.emplace_back();
+        file.name = new_name;
+        new_file(file);
+        Fit();
+    }
 }
 
-void chr_editor_t::on_name(unsigned index, std::string str)
+void chr_editor_t::on_rename(unsigned index, std::string str)
 {
+    for(unsigned i = 0; i < model.chr_files.size(); ++i)
+    {
+        if(i != index && model.chr_files[i].name == str)
+        {
+            wxMessageBox( wxT("Names must be unique."), wxT("Error"), wxICON_ERROR);
+            return;
+        }
+    }
+
+    std::string const old_name = model.chr_files[index].name;
     model.chr_files[index].name = str;
+
+    for(auto& mt : model.metatiles)
+        if(mt->chr_name == old_name)
+            mt->chr_name = str;
+
+    for(auto& level : model.levels)
+        if(level->chr_name == old_name)
+            level->chr_name = str;
 }
 
 void chr_editor_t::on_open(unsigned index, std::string path)
@@ -181,4 +231,15 @@ void chr_editor_t::new_file(chr_file_t const& file)
     auto* def = new file_def_t(this, file, file_defs.size());
     file_defs.emplace_back(def);
     file_sizer->Add(def, wxSizerFlags().Expand());
+}
+
+void chr_editor_t::load()
+{
+    file_defs.clear();
+    for(auto const& file : model.chr_files)
+        new_file(file);
+
+    collision_filename->SetValue(model.collision_path.string());
+
+    Fit();
 }

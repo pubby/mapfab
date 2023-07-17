@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <memory>
 #include <variant>
-#include <unordered_set>
+#include <set>
 #include <filesystem>
 
 #include <boost/container/small_vector.hpp>
@@ -23,12 +23,25 @@ namespace bc = ::boost::container;
 class tile_layer_t;
 class metatile_layer_t;
 class level_model_t;
+struct object_t;
 
 using palette_array_t = std::array<std::uint8_t, 16>;
 using chr_array_t = std::array<std::uint8_t, 16*256>;
 
 constexpr std::uint8_t ACTIVE_COLLISION = 4;
 static constexpr std::size_t UNDO_LIMIT = 256;
+
+struct object_t
+{
+    coord_t position;
+    std::string name;
+    std::string oclass;
+    std::unordered_map<std::string, std::string> fields;
+
+    void append_vec(std::vector<std::uint16_t>& vec) const;
+    void from_vec(std::uint16_t*& ptr);
+    auto operator<=>(object_t const&) const = default;
+};
 
 enum undo_type_t { UNDO, REDO };
 
@@ -50,10 +63,23 @@ struct undo_level_dimen_t
     grid_t<std::uint8_t> tiles;
 };
 
-struct undo_level_palette_t
+struct undo_new_object_t
 {
-    level_model_t* model;
-    int palette;
+    level_model_t* level;
+    std::deque<unsigned> indices;
+};
+
+struct undo_delete_object_t
+{
+    level_model_t* level;
+    std::deque<std::pair<unsigned, object_t>> objects;
+};
+
+struct undo_edit_object_t
+{
+    level_model_t* level;
+    unsigned index;
+    object_t object;
 };
 
 using undo_t = std::variant
@@ -61,7 +87,9 @@ using undo_t = std::variant
     , undo_tiles_t
     , undo_palette_num_t
     , undo_level_dimen_t
-    , undo_level_palette_t
+    , undo_new_object_t
+    , undo_delete_object_t
+    , undo_edit_object_t
     >;
 
 // Used to select and deselect specific tiles:
@@ -121,6 +149,11 @@ struct tile_copy_t
             ret.tiles[c] = vec.at(i++);
         return ret;
     }
+};
+
+struct object_copy_t
+{
+    std::vector<object_t> objects;
 };
 
 enum
@@ -272,15 +305,13 @@ public:
 
     void clear_chr();
     void refresh_chr(chr_array_t const& chr, palette_array_t const& palette);
-    void refresh_metatiles();
 
-    std::string name = "metatiles_0";
+    std::string name = "metatiles";
     std::string chr_name;
     std::uint16_t num = 1;
     std::uint8_t active = 0;
     std::uint8_t palette = 0;
     std::vector<attr_bitmaps_t> chr_bitmaps;
-    std::vector<wxBitmap> metatile_bitmaps;
 
     chr_layer_t chr_layer = chr_layer_t(this->active);
     collision_layer_t collision_layer;
@@ -304,15 +335,6 @@ struct object_class_t
     std::deque<class_field_t> fields;
 };
 
-struct object_t
-{
-    int index;
-    coord_t position;
-    std::string name;
-    std::string oclass;
-    std::unordered_map<std::string, std::string> fields;
-};
-
 class metatile_layer_t : public tile_layer_t
 {
 public:
@@ -323,6 +345,13 @@ public:
 
     undo_t save() { return undo_level_dimen_t{ this, tiles }; }
 };
+
+enum level_layer_t
+{
+    TILE_LAYER = 0,
+    OBJECT_LAYER,
+};
+
 
 class level_model_t : public tile_model_t
 {
@@ -335,13 +364,22 @@ public:
         metatile_layer.canvas_selector.resize(dimen);
     }
 
-    std::string name = "level_0";
+    void clear_metatiles();
+    void refresh_metatiles(metatile_model_t const& metatiles, chr_array_t const& chr, palette_array_t const& palette);
+
+    void reindex_objects();
+
+    std::string name = "level";
+    std::string macro_name;
+    std::string metatiles_name;
+    std::string chr_name;
     std::uint8_t palette = 0;
     metatile_layer_t metatile_layer;
-    std::shared_ptr<metatile_model_t> metatiles;
+    std::vector<wxBitmap> metatile_bitmaps;
+    level_layer_t current_layer = TILE_LAYER;
 
-    std::unordered_set<int> object_selector;
-    std::deque<object_t> objects = { object_t{ 0, coord_t{ 64, 32 } }};
+    std::set<int> object_selector;
+    std::deque<object_t> objects;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -352,7 +390,8 @@ struct model_t
 {
     model_t()
     {
-        chr_files.push_back({ "tileset" });
+        chr_files.push_back({ "chr" });
+        object_classes.push_back(std::make_shared<object_class_t>("object"));
         metatiles.emplace_back(std::make_shared<metatile_model_t>());
         levels.emplace_back(std::make_shared<level_model_t>());
     }
@@ -384,10 +423,12 @@ struct model_t
     undo_t operator()(undo_tiles_t const& undo);
     undo_t operator()(undo_palette_num_t const& undo);
     undo_t operator()(undo_level_dimen_t const& undo);
-    undo_t operator()(undo_level_palette_t const& undo);
+    undo_t operator()(undo_new_object_t const& undo);
+    undo_t operator()(undo_delete_object_t const& undo);
+    undo_t operator()(undo_edit_object_t const& undo);
 
-    void write_file(FILE* fp, std::string const& chr_path, std::string const& collision_path) const;
-    void read_file(FILE* fp, std::string& chr_path, std::string& collisions_path);
+    void write_file(FILE* fp, std::filesystem::path base_path) const;
+    void read_file(FILE* fp, std::filesystem::path base_path);
 };
 
 struct undo_history_t
@@ -423,6 +464,15 @@ typename C::value_type* lookup_name(std::string const& name, C& c)
         if(e.name == name)
             return &e;
     return nullptr;
+}
+
+template<typename C>
+typename C::value_type lookup_name_ptr(std::string const& name, C& c)
+{
+    for(auto& e : c)
+        if(e->name == name)
+            return e;
+    return typename C::value_type();
 }
 
 #endif

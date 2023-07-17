@@ -2,9 +2,12 @@
 #define GRID_BOX_HPP
 
 #include <bit>
+#include <unordered_set>
+#include <type_traits>
 
 #include <wx/wx.h>
 #include <wx/notebook.h>
+#include <wx/rearrangectrl.h>
 
 #include "2d/geometry.hpp"
 
@@ -31,6 +34,192 @@ enum
 
 class editor_t;
 
+template<typename P>
+class tab_dialog_t : public wxRearrangeDialog
+{
+public:
+    using page_type = typename P::page_type;
+    using object_type = typename P::object_type;
+
+    template<typename... Args>
+    tab_dialog_t(wxWindow *parent, model_t& model, Args&&... args)
+    : wxRearrangeDialog(parent, std::forward<Args>(args)...)
+    , model(model)
+    {
+        wxPanel* panel = new wxPanel(this);
+        wxSizer* sizer = new wxBoxSizer(wxHORIZONTAL);
+        wxButton* deselect_button = new wxButton(panel, wxID_ANY, "Deselect All");
+        //wxButton* deselect_name_button = new wxButton(panel, wxID_ANY, "Deselect by Name");
+        wxButton* select_name_button = new wxButton(panel, wxID_ANY, "Select by Name");
+        sizer->Add(deselect_button, wxSizerFlags().Border(wxRIGHT));
+        //sizer->Add(deselect_name_button, wxSizerFlags().Border(wxRIGHT));
+        sizer->Add(select_name_button);
+        panel->SetSizer(sizer);
+        AddExtraControls(panel);
+
+        deselect_button->Bind(wxEVT_BUTTON, &tab_dialog_t::on_deselect_all, this);
+        //deselect_name_button->Bind(wxEVT_BUTTON, &tab_dialog_t::on_select_name<true>, this);
+        select_name_button->Bind(wxEVT_BUTTON, &tab_dialog_t::on_select_name<false>, this);
+        GetList()->Connect(wxID_ANY, wxEVT_RIGHT_UP, wxMouseEventHandler(tab_dialog_t::on_right_click), nullptr, this);
+
+        Bind(wxEVT_MENU, &tab_dialog_t::on_new_page, this, ID_R_NEW_PAGE);
+        Bind(wxEVT_MENU, &tab_dialog_t::on_delete_page, this, ID_R_DELETE_PAGE);
+        Bind(wxEVT_MENU, &tab_dialog_t::on_rename_page, this, ID_R_RENAME_PAGE);
+        Bind(wxEVT_MENU, &tab_dialog_t::on_clone_page, this, ID_R_CLONE_PAGE);
+    }
+
+    void on_deselect_all(wxCommandEvent& event)
+    {
+        for(unsigned i = 0; i < GetList()->GetCount(); ++i)
+            GetList()->Check(i, false);
+    }
+
+    template<bool Deselect>
+    void on_select_name(wxCommandEvent& event)
+    {
+        wxTextEntryDialog dlg(this, Deselect ? "Deselect all containing: ": "Select all containing:", "Select");
+        if(dlg.ShowModal() == wxID_OK)
+        {
+            wxString string = dlg.GetValue();
+            for(unsigned i = 0; i < GetList()->GetCount(); ++i)
+                if(GetList()->GetString(i).Contains(string))
+                    GetList()->Check(i, !Deselect);
+        }
+    }
+
+    void on_right_click(wxMouseEvent& event)
+    {
+        rtab_id = GetList()->HitTest(wxPoint(event.GetX(), event.GetY()));
+
+        wxMenu tab_menu;
+        tab_menu.Append(ID_R_NEW_PAGE, std::string("&New ") + P::name);
+        tab_menu.Append(ID_R_DELETE_PAGE, std::string("&Delete ") + P::name);
+        tab_menu.Append(ID_R_RENAME_PAGE, std::string("&Rename ") + P::name);
+        tab_menu.Append(ID_R_CLONE_PAGE, std::string("&Clone ") + P::name);
+
+        tab_menu.Enable(ID_R_DELETE_PAGE, rtab_id >= 0 && GetList()->GetCount() > 1);
+        tab_menu.Enable(ID_R_NEW_PAGE, rtab_id >= 0);
+        tab_menu.Enable(ID_R_RENAME_PAGE, rtab_id >= 0);
+        tab_menu.Enable(ID_R_CLONE_PAGE, rtab_id >= 0);
+
+        PopupMenu(&tab_menu);
+    }
+
+    void on_new_page(wxCommandEvent& event)
+    {
+        if(rtab_id < 0 || rtab_id >= int(GetList()->GetCount()))
+            rtab_id = GetList()->GetCount() ? GetList()->GetCount() - 1 : 0;
+
+        auto& object = collection().emplace_back(std::make_shared<object_type>());
+        wxString name;
+        wxTextEntryDialog dlg(this, "Name:", std::string("New ") + P::name);
+        if(dlg.ShowModal() == wxID_OK)
+            name = dlg.GetValue();
+        else
+            return;
+
+        if(!handle_unique_name(object->name, name.ToStdString()))
+            return;
+
+        object->name = name.ToStdString();
+        GetList()->InsertItems(1, &name, rtab_id + 1);
+        GetList()->Select(rtab_id + 1);
+        GetList()->Check(rtab_id + 1);
+    }
+
+    void on_clone_page(wxCommandEvent& event)
+    {
+        if(rtab_id < 0 || rtab_id >= int(GetList()->GetCount()))
+            return;
+
+        auto& object = collection().emplace_back(std::make_shared<object_type>(*collection().at(rtab_id)));
+        wxString name;
+        wxTextEntryDialog dlg(this, "Name:", std::string("New ") + P::name);
+        if(dlg.ShowModal() == wxID_OK)
+            name = dlg.GetValue();
+        else
+            return;
+
+        if(!handle_unique_name(object->name, name.ToStdString()))
+            return;
+
+        object->name = name.ToStdString();
+        GetList()->InsertItems(1, &name, rtab_id + 1);
+        GetList()->Select(rtab_id + 1);
+    }
+
+    void on_delete_page(wxCommandEvent& event)
+    {
+        if(rtab_id < 0 || rtab_id >= int(GetList()->GetCount()))
+            return;
+
+        wxString text;
+        text << "Delete";
+        if(!collection().at(rtab_id)->name.empty())
+            text << ' ' << collection().at(rtab_id)->name;
+        text << "?\nThis cannot be undone.";
+
+        wxMessageDialog dialog(this, text, "Warning", wxOK | wxCANCEL | wxICON_WARNING);
+        if(dialog.ShowModal() == wxID_OK)
+        {
+            GetList()->Delete(rtab_id);
+            collection().erase(collection().begin() + rtab_id);
+        }
+    }
+
+    void on_rename_page(wxCommandEvent& event)
+    {
+        if(rtab_id < 0 || rtab_id >= int(GetList()->GetCount()))
+            return;
+
+        wxTextEntryDialog dialog(
+            this, "Rename Level", "New name:", collection().at(rtab_id)->name);
+
+        if(dialog.ShowModal() == wxID_OK)
+        {
+            wxString new_name = dialog.GetValue();
+            std::string old_name = collection().at(rtab_id)->name;
+
+            if(!handle_unique_name(old_name, new_name.ToStdString()))
+                return;
+
+            collection().at(rtab_id)->name = new_name.ToStdString();
+
+            P::rename(model, old_name, collection().at(rtab_id)->name);
+
+            GetList()->SetString(rtab_id, new_name);
+        }
+    }
+
+private:
+    auto& collection() { return P::collection(model); }
+
+    bool unique_name(std::string const& name)
+    {
+        for(auto const& c : collection())
+            if(c->name == name)
+                return false;
+        return true;
+    }
+
+    bool handle_unique_name(std::string const& old_name, std::string const& name)
+    {
+        if(old_name == name)
+            return true;
+
+        if(!unique_name(name))
+        {
+            wxMessageBox( wxT("Names must be unique."), wxT("Error"), wxICON_ERROR);
+            return false;
+        }
+
+        return true;
+    }
+
+    model_t& model;
+    int rtab_id = -1;
+};
+
 class grid_box_t : public wxScrolledWindow
 {
 public:
@@ -53,6 +242,7 @@ public:
     coord_t to_screen(coord_t c) const { return to_screen(c, tile_size()); }
     coord_t to_screen(coord_t c, dimen_t tile_size) const;
 
+    void set_zoom(int amount, wxPoint position);
 protected:
     dimen_t grid_dimen = {};
     mouse_button_t mouse_down = MB_NONE;
@@ -162,15 +352,25 @@ public:
     virtual tile_copy_t copy(bool cut);
 };
 
+class base_tab_panel_t : public wxPanel
+{
+public:
+    base_tab_panel_t(wxWindow* parent)
+    : wxPanel(parent)
+    {}
+
+    virtual void on_manage() = 0;
+};
+
 template<typename P>
-class tab_panel_t : public wxPanel
+class tab_panel_t : public base_tab_panel_t
 {
 public:
     using page_type = typename P::page_type;
     using object_type = typename P::object_type;
 
     tab_panel_t(wxWindow* parent, model_t& model)
-    : wxPanel(parent)
+    : base_tab_panel_t(parent)
     , model(model)
     {
         notebook = new wxNotebook(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxNB_BOTTOM);
@@ -180,10 +380,8 @@ public:
 
         notebook->Connect(wxID_ANY, wxEVT_RIGHT_UP, wxMouseEventHandler(tab_panel_t::on_right_click), nullptr, this);
 
-        Bind(wxEVT_MENU, &tab_panel_t::on_new_page, this, ID_R_NEW_PAGE);
-        Bind(wxEVT_MENU, &tab_panel_t::on_delete_page, this, ID_R_DELETE_PAGE);
-        Bind(wxEVT_MENU, &tab_panel_t::on_rename_page, this, ID_R_RENAME_PAGE);
-        Bind(wxEVT_MENU, &tab_panel_t::on_clone_page, this, ID_R_CLONE_PAGE);
+        Bind(wxEVT_MENU, &tab_panel_t::on_close_tab, this, ID_R_CLOSE_TAB);
+        Bind(wxEVT_MENU, &tab_panel_t::on_manage, this, ID_R_MANAGE_TABS);
         Bind(wxEVT_NOTEBOOK_PAGE_CHANGING, &tab_panel_t::on_page_changing, this);
     }
 
@@ -214,36 +412,6 @@ public:
             notebook->AddPage(new page_type(notebook, model, object), object->name);
     }
 
-    void new_page()
-    {
-        unsigned id = 0;
-        auto const make_string = [&]
-        {
-            wxString ret;
-            ret << P::name;
-            ret << "_";
-            ret << id;
-            return ret;
-        };
-
-        for(unsigned i = 0; i < notebook->GetPageCount(); ++i)
-        {
-            wxString used = notebook->GetPageText(i);
-            if(used == make_string())
-            {
-                ++id;
-                i = 0;
-            }
-        }
-
-        auto& object = collection().emplace_back(std::make_shared<object_type>());
-        assert(collection().back());
-        auto* page = new page_type(notebook, model, object);
-        wxString const name = make_string();
-        notebook->AddPage(page, name);
-        object->name = name.ToStdString();
-    }
-
     void prepare_page(int i)
     {
         P::on_page_changing(page(i), object(i));
@@ -257,76 +425,82 @@ public:
         rtab_id = notebook->HitTest(wxPoint(event.GetX(), event.GetY()));
 
         wxMenu tab_menu;
-        tab_menu.Append(ID_R_NEW_PAGE, std::string("&New ") + P::name);
-        tab_menu.Append(ID_R_DELETE_PAGE, std::string("&Delete ") + P::name);
-        tab_menu.Append(ID_R_RENAME_PAGE, std::string("&Rename ") + P::name);
-        tab_menu.Append(ID_R_CLONE_PAGE, std::string("&Clone ") + P::name);
+        tab_menu.Append(ID_R_CLOSE_TAB, std::string("&Close Tab"));
+        tab_menu.Append(ID_R_MANAGE_TABS, std::string("&Manage Tabs"));
 
-        tab_menu.Enable(ID_R_DELETE_PAGE, rtab_id >= 0 && notebook->GetPageCount() > 1);
-        tab_menu.Enable(ID_R_RENAME_PAGE, rtab_id >= 0);
-        tab_menu.Enable(ID_R_CLONE_PAGE, rtab_id >= 0);
+        tab_menu.Enable(ID_R_CLOSE_TAB, rtab_id >= 0);
 
         PopupMenu(&tab_menu);
     }
-    
-    void on_new_page(wxCommandEvent& event) { new_page(); }
 
-    void on_delete_page(wxCommandEvent& event)
+    void on_close_tab(wxCommandEvent& event)
     {
-        if(rtab_id < 0 || notebook->GetPageCount() <= 1)
+        if(rtab_id < 0 || rtab_id >= int(notebook->GetPageCount()))
             return;
-
-        wxString text;
-        text << "Delete ";
-        text < collection().at(rtab_id)->name;
-        text << "?\nThis cannot be undone.";
-
-        wxMessageDialog dialog(this, text, "Warning", wxOK | wxCANCEL | wxICON_WARNING);
-        if(dialog.ShowModal() == wxID_OK)
-        {
-            notebook->RemovePage(rtab_id);
-            collection().erase(collection().begin() + rtab_id);
-        }
+        notebook->RemovePage(rtab_id);
     }
 
-    void on_rename_page(wxCommandEvent& event)
+    virtual void on_manage() override
     {
-        if(rtab_id < 0)
-            return;
-        wxTextEntryDialog dialog(
-            this, "Rename Level", "New name:", collection().at(rtab_id)->name);
+        wxArrayString items;
+        for(auto const& object : collection())
+            items.push_back(object->name);
 
-        if(dialog.ShowModal() == wxID_OK)
+        wxArrayInt order;
+        int last = -1;
+        for(unsigned i = 0; i < collection().size(); ++i)
         {
-            wxString new_name = dialog.GetValue();
-            if(!new_name.IsEmpty())
+            auto ptr = collection()[i].get();
+
+            for(unsigned j = 0; j < notebook->GetPageCount(); ++j)
             {
-                for(unsigned i = 0; i < notebook->GetPageCount(); ++i)
+                if(page(j).ptr() == ptr)
                 {
-                    if(i == rtab_id)
-                        continue;
-
-                    wxString used = notebook->GetPageText(i);
-                    if(used == new_name)
-                    {
-                        wxMessageDialog dialog(this, std::string("A ") + P::name + std::string("with that name already exists."), "Error", wxOK | wxICON_ERROR);
-                        dialog.ShowModal();
-                        return;
-                    }
+                    order.push_back(i);
+                    if(notebook->GetSelection() == j)
+                        last = i;
+                    goto next_iter;
                 }
-
-                collection().at(rtab_id)->name = new_name.ToStdString();
-                notebook->SetPageText(rtab_id, new_name);
             }
+            order.push_back(~i);
+        next_iter:;
+        }
+
+        tab_dialog_t<P> dlg(nullptr, model,
+            "Choose which tabs to display. Right-click for more options.", 
+            P::name + std::string(" Manager"), order, items);
+
+        if(last >= 0)
+            dlg.GetList()->Select(last);
+
+        if(dlg.ShowModal() == wxID_OK) 
+        {
+            notebook->DeleteAllPages();
+
+            order = dlg.GetOrder();
+
+            for(size_t n = 0; n < order.size(); ++n) {
+                if(order[n] >= 0) {
+                    auto& object = collection().at(order[n]);
+                    notebook->AddPage(new page_type(notebook, model, object), object->name);
+                    if(n == dlg.GetList()->GetSelection())
+                        notebook->SetSelection(notebook->GetPageCount() - 1);
+                }
+            }
+
+            std::remove_reference_t<decltype(collection())> new_collection;
+            for(size_t n = 0; n < order.size(); ++n) {
+                auto const index = order[n] >= 0 ? order[n] : ~order[n];
+                new_collection.emplace_back(std::move(collection()[index]));
+            }
+            collection() = std::move(new_collection);
         }
     }
 
-    // TODO
-    void on_clone_page(wxCommandEvent& event)
-    {
-    }
+    void on_manage(wxCommandEvent& event) { on_manage(); }
 
 protected:
+
     auto& collection() { return P::collection(model); }
 
     model_t& model;

@@ -60,7 +60,7 @@ private:
     std::vector<std::uint16_t> data;
 };
 
-class MyApp: public wxApp
+class app_t: public wxApp
 {
     bool OnInit();
     
@@ -79,16 +79,14 @@ public:
         
 };
 
-IMPLEMENT_APP(MyApp)
+IMPLEMENT_APP(app_t)
 
-class MyFrame : public wxFrame
+class frame_t : public wxFrame
 {
 public:
-    MyFrame();
+    frame_t();
  
 private:
-    void on_open_chr(wxCommandEvent& event);
-    void on_open_collision(wxCommandEvent& event);
     void on_exit(wxCommandEvent& event);
     void on_about(wxCommandEvent& event);
 
@@ -99,6 +97,8 @@ private:
     void do_save();
     void refresh_title();
     void on_tab_change(wxNotebookEvent& event);
+    void refresh_tab(int tab);
+    void refresh_tab();
 
     template<undo_type_t U>
     void on_undo(wxCommandEvent& event)
@@ -119,8 +119,11 @@ private:
                 undo_item[i]->Enable(false);
         }
 
+        bool editing = false;
+
         if(editor_t* editor = get_editor())
         {
+            editing = true;
             // 'can_paste' disabled due to GTK bug:
             /*
             tile_copy_t c;
@@ -136,9 +139,12 @@ private:
             copy->Enable(can_fill);
             fill->Enable(can_fill);
             fill_paste->Enable(can_fill && can_paste);
-            // TODO:
-            //fill_attribute->Enable(can_fill && metatiles && model.metatiles.active < 4);
+            fill_attribute->Enable(can_fill && notebook->GetSelection() == TAB_METATILES);
         }
+
+        for(auto* item : zoom)
+            item->Enable(editing);
+        manage->Enable(editing);
     }
 
     void update_ui(wxUpdateUIEvent& event)
@@ -156,12 +162,7 @@ private:
             return;
 
         if(event.GetChangeType() == wxFSW_EVENT_MODIFY)
-        {
-            if(path == chr_path)
-                load_chr();
-            if(path == collisions_path)
-                load_collisions();
-        }
+            refresh_tab();
     }
 
     void reset_watcher()
@@ -173,30 +174,10 @@ private:
         }
 
         watcher->RemoveAll();
-        watcher->Add(chr_path);
-        watcher->Add(collisions_path);
-    }
+        watcher->Add(wxString(model.collision_path.string()));
 
-    // TODO
-    void load_chr()
-    {
-        /*
-        if(chr_path.IsEmpty())
-            return;
-        std::vector<std::uint8_t> data = read_binary_file(chr_path.c_str());
-        model.chr.fill(0);
-        std::copy_n(data.begin(), std::min(data.size(), model.chr.size()), model.chr.begin());
-        //model.refresh_chr(); TODO
-        Refresh();
-        */
-    }
-
-    void load_collisions()
-    {
-        if(collisions_path.IsEmpty())
-            return;
-        model.collision_bitmaps = load_collision_file(collisions_path);
-        Refresh();
+        for(auto const& chr : model.chr_files)
+            watcher->Add(wxString(chr.path.string()));
     }
 
     template<tool_t T>
@@ -204,6 +185,19 @@ private:
     {
         model.tool = T;
         Refresh();
+    }
+
+    template<unsigned Amount>
+    void on_zoom(wxCommandEvent& event)
+    {
+        if(editor_t* editor = get_editor())
+            editor->canvas_box().set_zoom(1 << Amount, {});
+    }
+
+    void on_manage(wxCommandEvent& event)
+    {
+        if(auto* tabs = get_tab_panel())
+            tabs->on_manage();
     }
 
     template<bool Cut>
@@ -280,8 +274,22 @@ private:
     {
         if(auto* m = metatile_panel->object())
         {
-            metatile_panel->page()->history.push(m->chr_layer.fill_attribute());
-            Refresh();
+            if(auto* page = metatile_panel->page())
+            {
+                page->history.push(m->chr_layer.fill_attribute());
+                Refresh();
+            }
+        }
+    }
+
+    base_tab_panel_t* get_tab_panel()
+    {
+        switch(notebook->GetSelection())
+        {
+        default: return nullptr;
+        case TAB_METATILES: return metatile_panel;
+        case TAB_LEVELS: return levels_panel;
+        case TAB_CLASSES: return class_panel;
         }
     }
 
@@ -291,7 +299,7 @@ private:
         {
         default: return nullptr;
         case TAB_PALETTE: return palette_editor;
-        case TAB_METATILES: return metatile_panel->page();;
+        case TAB_METATILES: return metatile_panel->page();
         case TAB_LEVELS: return levels_panel->page();
         }
     }
@@ -313,26 +321,23 @@ private:
     wxMenuItem* fill;
     wxMenuItem* fill_paste;
     wxMenuItem* fill_attribute;
+    std::array<wxMenuItem*, 5> zoom;
+    wxMenuItem* manage;
 
-    wxString project_path;
-    wxString chr_path;
-    wxString collisions_path;
+    std::filesystem::path project_path;
     std::unique_ptr<wxFileSystemWatcher> watcher;
 };
 
-bool MyApp::OnInit()
+bool app_t::OnInit()
 {
     wxInitAllImageHandlers();
-
-    //frame = new wxFrame((wxFrame *)NULL, -1,  wxT("Hello wxDC"), wxPoint(50,50), wxSize(800,600));
-
-    wxFrame* frame = new MyFrame();
+    wxFrame* frame = new frame_t();
     frame->Show();
     frame->SendSizeEvent();
     return true;
 } 
  
-MyFrame::MyFrame()
+frame_t::frame_t()
 : wxFrame(nullptr, wxID_ANY, "MapFab", wxDefaultPosition, wxSize(800, 600))
 {
     wxMenu* menu_file = new wxMenu;
@@ -341,16 +346,6 @@ MyFrame::MyFrame()
     menu_file->Append(wxID_SAVE, "&Save Project\tCTRL+S");
     menu_file->Append(wxID_SAVEAS, "Save Project &As\tSHIFT+CTRL+S");
     menu_file->AppendSeparator();
-    menu_file->Append(ID_OPEN_CHR, "Load CHR Image",
-                      "CHR comprises 256 8x8 tiles representing the graphics.");
-    menu_file->Append(ID_OPEN_COLLISION, "Load Collision Image",
-                      "Collision comprises 256 16x16 tiles representing tile properties.");
-    menu_file->AppendSeparator();
-    menu_file->Append(ID_IMPORT_MT,"Import Metatiles");
-    menu_file->Append(ID_IMPORT_LEVEL, "Import Level");
-    menu_file->AppendSeparator();
-    menu_file->Append(ID_EXPORT_MT,"Export Metatiles");
-    menu_file->Append(ID_EXPORT_LEVEL, "Export Level");
     menu_file->Append(wxID_EXIT);
 
     wxMenu* menu_edit = new wxMenu;
@@ -366,14 +361,14 @@ MyFrame::MyFrame()
     fill_attribute = menu_edit->Append(ID_FILL_ATTRIBUTE, "Fill Selection with Attribute\tCTRL+SHIFT+A");
 
     wxMenu* menu_view = new wxMenu;
-    menu_view->Append(ID_ZOOM_100,  "&Zoom 100%");
-    menu_view->Append(ID_ZOOM_200,  "&Zoom 200%");
-    menu_view->Append(ID_ZOOM_400,  "&Zoom 400%");
+    manage = menu_view->Append(ID_MANAGE_TABS, "&Manage Tabs\tCTRL+T");
+    menu_view->AppendSeparator();
+    zoom[0] = menu_view->Append(ID_ZOOM_100,  "&Zoom 1x");
+    zoom[1] = menu_view->Append(ID_ZOOM_200,  "&Zoom 2x");
+    zoom[2] = menu_view->Append(ID_ZOOM_400,  "&Zoom 4x");
+    zoom[3] = menu_view->Append(ID_ZOOM_800,  "&Zoom 8x");
+    zoom[4] = menu_view->Append(ID_ZOOM_1600,  "&Zoom 16x");
 
-    wxMenu* menu_level = new wxMenu;
-    menu_level->Append(ID_NEW_LEVEL, "New Level\tSHIFT+CTRL+N");
-    menu_level->Append(ID_DELETE_LEVEL, "Delete Level\tSHIFT+CTRL+D");
- 
     wxMenu* menu_help = new wxMenu;
     menu_help->Append(wxID_ABOUT);
  
@@ -381,8 +376,6 @@ MyFrame::MyFrame()
     menu_bar->Append(menu_file, "&File");
     menu_bar->Append(menu_edit, "&Edit");
     menu_bar->Append(menu_view, "&View");
-    //menu_bar->Append(menu_attr, "&Attribute");
-    menu_bar->Append(menu_level, "&Levels");
     menu_bar->Append(menu_help, "&Help");
 
     SetMenuBar(menu_bar);
@@ -427,45 +420,48 @@ MyFrame::MyFrame()
     sizer->Add(tool_bar, wxSizerFlags().Expand());
     sizer->Add(notebook, wxSizerFlags().Expand().Proportion(1));
     SetSizer(sizer);
-    //SetAutoLayout(true);
 
-    Bind(wxEVT_MENU, &MyFrame::on_open_chr, this, ID_OPEN_CHR);
-    Bind(wxEVT_MENU, &MyFrame::on_open_collision, this, ID_OPEN_COLLISION);
-    Bind(wxEVT_MENU, &MyFrame::on_about, this, wxID_ABOUT);
-    Bind(wxEVT_MENU, &MyFrame::on_exit, this, wxID_EXIT);
-    Bind(wxEVT_MENU, &MyFrame::on_undo<UNDO>, this, wxID_UNDO);
-    Bind(wxEVT_MENU, &MyFrame::on_undo<REDO>, this, wxID_REDO);
-    Bind(wxEVT_MENU, &MyFrame::on_new_window, this, wxID_NEW);
-    Bind(wxEVT_MENU, &MyFrame::on_open, this, wxID_OPEN);
-    Bind(wxEVT_MENU, &MyFrame::on_save, this, wxID_SAVE);
-    Bind(wxEVT_MENU, &MyFrame::on_save_as, this, wxID_SAVEAS);
-    Bind(wxEVT_MENU, &MyFrame::on_copy<true>, this, wxID_CUT);
-    Bind(wxEVT_MENU, &MyFrame::on_copy<false>, this, wxID_COPY);
-    Bind(wxEVT_MENU, &MyFrame::on_paste, this, wxID_PASTE);
-    Bind(wxEVT_MENU, &MyFrame::on_fill, this, ID_FILL);
-    Bind(wxEVT_MENU, &MyFrame::on_fill_paste, this, ID_FILL_PASTE);
-    Bind(wxEVT_MENU, &MyFrame::on_fill_attribute, this, ID_FILL_ATTRIBUTE);
+    Bind(wxEVT_MENU, &frame_t::on_about, this, wxID_ABOUT);
+    Bind(wxEVT_MENU, &frame_t::on_exit, this, wxID_EXIT);
+    Bind(wxEVT_MENU, &frame_t::on_undo<UNDO>, this, wxID_UNDO);
+    Bind(wxEVT_MENU, &frame_t::on_undo<REDO>, this, wxID_REDO);
+    Bind(wxEVT_MENU, &frame_t::on_new_window, this, wxID_NEW);
+    Bind(wxEVT_MENU, &frame_t::on_open, this, wxID_OPEN);
+    Bind(wxEVT_MENU, &frame_t::on_save, this, wxID_SAVE);
+    Bind(wxEVT_MENU, &frame_t::on_save_as, this, wxID_SAVEAS);
+    Bind(wxEVT_MENU, &frame_t::on_copy<true>, this, wxID_CUT);
+    Bind(wxEVT_MENU, &frame_t::on_copy<false>, this, wxID_COPY);
+    Bind(wxEVT_MENU, &frame_t::on_paste, this, wxID_PASTE);
+    Bind(wxEVT_MENU, &frame_t::on_fill, this, ID_FILL);
+    Bind(wxEVT_MENU, &frame_t::on_fill_paste, this, ID_FILL_PASTE);
+    Bind(wxEVT_MENU, &frame_t::on_fill_attribute, this, ID_FILL_ATTRIBUTE);
+    Bind(wxEVT_MENU, &frame_t::on_zoom<0>, this, ID_ZOOM_100);
+    Bind(wxEVT_MENU, &frame_t::on_zoom<1>, this, ID_ZOOM_200);
+    Bind(wxEVT_MENU, &frame_t::on_zoom<2>, this, ID_ZOOM_400);
+    Bind(wxEVT_MENU, &frame_t::on_zoom<3>, this, ID_ZOOM_800);
+    Bind(wxEVT_MENU, &frame_t::on_zoom<4>, this, ID_ZOOM_1600);
+    Bind(wxEVT_MENU, &frame_t::on_manage, this, ID_MANAGE_TABS);
 
-    Bind(wxEVT_TOOL, &MyFrame::on_tool<TOOL_STAMP>, this, ID_TOOL_STAMP);
-    Bind(wxEVT_TOOL, &MyFrame::on_tool<TOOL_DROPPER>, this, ID_TOOL_DROPPER);
-    Bind(wxEVT_TOOL, &MyFrame::on_tool<TOOL_SELECT>, this, ID_TOOL_SELECT);
+    Bind(wxEVT_TOOL, &frame_t::on_tool<TOOL_STAMP>, this, ID_TOOL_STAMP);
+    Bind(wxEVT_TOOL, &frame_t::on_tool<TOOL_DROPPER>, this, ID_TOOL_DROPPER);
+    Bind(wxEVT_TOOL, &frame_t::on_tool<TOOL_SELECT>, this, ID_TOOL_SELECT);
 
-    notebook->Bind(wxEVT_NOTEBOOK_PAGE_CHANGING, &MyFrame::on_tab_change, this);
+    notebook->Bind(wxEVT_NOTEBOOK_PAGE_CHANGING, &frame_t::on_tab_change, this);
 
 
-    Bind(wxEVT_UPDATE_UI, &MyFrame::update_ui, this);
+    Bind(wxEVT_UPDATE_UI, &frame_t::update_ui, this);
 
     //model.refresh_chr(); TODO
 
     Update();
 }
  
-void MyFrame::on_exit(wxCommandEvent& event)
+void frame_t::on_exit(wxCommandEvent& event)
 {
     Close(true);
 }
  
-void MyFrame::on_about(wxCommandEvent& event)
+void frame_t::on_about(wxCommandEvent& event)
 {
     wxString string;
     string << "MapFab version " << VERSION << ".\n";
@@ -474,7 +470,8 @@ void MyFrame::on_about(wxCommandEvent& event)
     wxMessageBox(string, "About MapFab", wxOK | wxICON_INFORMATION);
 }
 
-void MyFrame::on_open_chr(wxCommandEvent& event)
+/* TODO
+void frame_t::on_open_chr(wxCommandEvent& event)
 {
     wxFileDialog* open_dialog = new wxFileDialog(
         this, _("Choose a file to open"), wxEmptyString, wxEmptyString, 
@@ -491,8 +488,10 @@ void MyFrame::on_open_chr(wxCommandEvent& event)
         Refresh();
     }
 }
+*/
 
-void MyFrame::on_open_collision(wxCommandEvent& event)
+/* TODO
+void frame_t::on_open_collision(wxCommandEvent& event)
 {
     wxFileDialog* open_dialog = new wxFileDialog(
         this, _("Choose a file to open"), wxEmptyString, wxEmptyString, 
@@ -510,7 +509,7 @@ void MyFrame::on_open_collision(wxCommandEvent& event)
 }
 
 /* TODO
-void MyFrame::on_new(wxCommandEvent& event)
+void frame_t::on_new(wxCommandEvent& event)
 {
     int const answer = wxMessageBox("Create a new project?\nUnsaved progress will be lost.", "Confirm", wxOK | wxCANCEL, this);
 
@@ -530,14 +529,14 @@ void MyFrame::on_new(wxCommandEvent& event)
 }
 */
 
-void MyFrame::on_new_window(wxCommandEvent& event)
+void frame_t::on_new_window(wxCommandEvent& event)
 {
-    wxFrame* frame = new MyFrame();
+    wxFrame* frame = new frame_t();
     frame->Show();
     frame->SendSizeEvent();
 }
 
-void MyFrame::on_open(wxCommandEvent& event)
+void frame_t::on_open(wxCommandEvent& event)
 {
     using namespace std::filesystem;
 
@@ -549,11 +548,11 @@ void MyFrame::on_open(wxCommandEvent& event)
 
     if(open_dialog->ShowModal() == wxID_OK) // if the user click "Open" instead of "Cancel"
     {
-        MyFrame* frame = this;
+        frame_t* frame = this;
 
         if(model.modified)
-            frame = new MyFrame();
-        frame->project_path = open_dialog->GetPath();
+            frame = new frame_t();
+        frame->project_path = open_dialog->GetPath().ToStdString();
 
         FILE* fp = std::fopen(frame->project_path.c_str(), "rb");
         auto guard = make_scope_guard([&]{ std::fclose(fp); });
@@ -561,21 +560,25 @@ void MyFrame::on_open(wxCommandEvent& event)
         std::string chr_name;
         std::string collisions_name;
 
-        frame->model.read_file(fp, chr_name, collisions_name);
+        frame->model.read_file(fp, frame->project_path);
 
-        path project(frame->project_path.ToStdString());
+        path project(frame->project_path);
         if(project.has_filename())
             project.remove_filename();
 
+        /* TODO
         if(!chr_name.empty())
             frame->chr_path = (project / path(chr_name)).string();
         if(!collisions_name.empty())
             frame->collisions_path = (project / path(collisions_name)).string();
+            */
 
+        frame->chr_editor->load();
+        frame->metatile_panel->load_pages();
         frame->levels_panel->load_pages();
         frame->reset_watcher();
-        frame->load_chr();
-        frame->load_collisions();
+        //frame->load_chr();
+        //frame->load_collisions();
         frame->Update();
 
         if(frame == this)
@@ -588,15 +591,15 @@ void MyFrame::on_open(wxCommandEvent& event)
     }
 }
 
-void MyFrame::on_save(wxCommandEvent& event)
+void frame_t::on_save(wxCommandEvent& event)
 {
-    if(project_path.IsEmpty())
+    if(project_path.empty())
         on_save_as(event);
     else
         do_save();
 }
 
-void MyFrame::on_save_as(wxCommandEvent& event)
+void frame_t::on_save_as(wxCommandEvent& event)
 {
     wxFileDialog save_dialog(
         this, _("Save file as"), wxEmptyString, _("unnamed"), 
@@ -605,53 +608,57 @@ void MyFrame::on_save_as(wxCommandEvent& event)
 
     if(save_dialog.ShowModal() != wxID_CANCEL) // if the user click "Save" instead of "Cancel"
     {
-        project_path = save_dialog.GetPath();
+        project_path = save_dialog.GetPath().ToStdString();
         do_save();
     }
 
 }
-void MyFrame::do_save()
+void frame_t::do_save()
 {
     using namespace std::filesystem;
 
-    if(project_path.IsEmpty())
+    if(project_path.empty())
         throw std::runtime_error("Invalid file");
 
-    path project(project_path.ToStdString());
+    path project(project_path);
     if(project.has_filename())
         project.remove_filename();
 
     std::string relative_chr;
+    /* TODO
     if(!chr_path.IsEmpty())
     {
         path chr(chr_path.ToStdString());
         relative_chr = relative(chr, project).string();
     }
+    */
 
     std::string relative_collisions;
+    /* TODO
     if(!collisions_path.IsEmpty())
     {
         path collisions(collisions_path.ToStdString());
         relative_collisions = relative(collisions, project).string();
     }
+    */
 
     FILE* fp = std::fopen(project_path.c_str(), "wb");
     auto guard = make_scope_guard([&]{ std::fclose(fp); });
 
-    model.write_file(fp, relative_chr, relative_collisions);
+    model.write_file(fp, project_path);
     model.modified_since_save = false;
     Update();
 }
 
-void MyFrame::refresh_title()
+void frame_t::refresh_title()
 {
     using namespace std::filesystem;
 
-    if(project_path.IsEmpty())
+    if(project_path.empty())
         SetTitle("MapFab");
     else
     {
-        path path = project_path.ToStdString();
+        path path = project_path;
         wxString title;
         if(model.modified_since_save)
             title << "*";
@@ -661,11 +668,22 @@ void MyFrame::refresh_title()
     }
 }
 
-void MyFrame::on_tab_change(wxNotebookEvent& event)
+void frame_t::on_tab_change(wxNotebookEvent& event)
 {
-    switch(event.GetSelection())
+    refresh_tab(event.GetSelection());
+}
+
+void frame_t::refresh_tab(int tab)
+{
+    switch(tab)
     {
     default: break;
     case TAB_METATILES: return metatile_panel->page_changed();
+    case TAB_LEVELS: return levels_panel->page_changed();
     }
+}
+
+void frame_t::refresh_tab()
+{
+    refresh_tab(notebook->GetSelection());
 }

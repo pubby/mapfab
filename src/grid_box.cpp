@@ -107,11 +107,16 @@ void grid_box_t::on_wheel(wxMouseEvent& event)
     int const diff = target - scale;
 
     int const new_scale = std::clamp(scale + diff, 1, 16);
+    auto cursor = event.GetPosition();
+    set_zoom(new_scale, cursor);
+}
+
+void grid_box_t::set_zoom(int new_scale, wxPoint cursor)
+{
     if(new_scale == scale)
         return;
 
-    auto cursor = event.GetPosition();
-
+    int const diff = new_scale - scale;
     double const scale_diff = double(new_scale) / double(scale);
 
     int sx, sy;
@@ -325,6 +330,9 @@ void canvas_box_t::draw_underlays(wxDC& dc)
 
 void canvas_box_t::draw_overlays(wxDC& dc)
 {
+    if(!enable_tile_select())
+        return;
+
     if(model.tool == TOOL_SELECT)
     {
         for(coord_t c : dimen_range(layer().canvas_selector.dimen()))

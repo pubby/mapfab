@@ -52,6 +52,7 @@ void metatile_canvas_t::draw_tiles(wxDC& dc)
         draw_chr_tile(*metatiles, dc, tile, attribute, { x0, y0 });
     }
 
+    unsigned num = 0;
     for(coord_t c : dimen_range(metatiles->collision_layer.tiles.dimen()))
     {
         int x0 = c.x * 16 + margin().w;
@@ -66,6 +67,16 @@ void metatile_canvas_t::draw_tiles(wxDC& dc)
         dc.SetPen(wxPen(wxColor(255, 0, 255), 0, wxPENSTYLE_DOT));
         dc.SetBrush(wxBrush());
         dc.DrawRectangle(x0, y0, 16, 16);
+
+        if(num >= metatiles->num)
+        {
+            dc.SetPen(wxPen(wxColor(255, 0, 0), 2, wxPENSTYLE_SOLID));
+            dc.DrawLine(x0 + 2, y0 + 2, x0 + 14, y0 + 14);
+            dc.SetPen(wxPen(wxColor(0, 0, 255), 2, wxPENSTYLE_SOLID));
+            dc.DrawLine(x0 + 14, y0 + 2, x0 + 2, y0 + 14);
+        }
+
+        ++num;
     }
 
     draw_overlays(dc);
@@ -92,6 +103,10 @@ metatile_editor_t::metatile_editor_t(wxWindow* parent, model_t& model, std::shar
     attributes[3] = new wxRadioButton(left_panel, wxID_ANY, "Attribute 3  (F4)");
     attributes[4] = new wxRadioButton(left_panel, wxID_ANY, "Collisions   (F5)");
 
+    auto* num_label = new wxStaticText(left_panel, wxID_ANY, "Metatile Count");
+    num_ctrl = new wxSpinCtrl(left_panel);
+    num_ctrl->SetRange(1, 256);
+
     auto* chr_label = new wxStaticText(left_panel, wxID_ANY, "Display CHR");
     chr_combo = new wxComboBox(left_panel, wxID_ANY);
 
@@ -106,12 +121,12 @@ metatile_editor_t::metatile_editor_t(wxWindow* parent, model_t& model, std::shar
         sizer->Add(picker, wxSizerFlags().Expand().Proportion(1));
         for(auto* ptr : attributes)
             sizer->Add(ptr, wxSizerFlags().Border(wxLEFT));
-        sizer->AddSpacer(16);
-        sizer->Add(chr_label, wxSizerFlags().Border(wxLEFT));
-        sizer->Add(chr_combo, wxSizerFlags().Border(wxLEFT));
-        sizer->AddSpacer(16);
+        sizer->Add(chr_label, wxSizerFlags().Border(wxLEFT | wxUP));
+        sizer->Add(chr_combo, wxSizerFlags().Border(wxLEFT | wxDOWN));
         sizer->Add(palette_text, wxSizerFlags().Border(wxLEFT));
-        sizer->Add(palette_ctrl, wxSizerFlags().Border(wxLEFT));
+        sizer->Add(palette_ctrl, wxSizerFlags().Border(wxLEFT | wxDOWN));
+        sizer->Add(num_label, wxSizerFlags().Border(wxLEFT));
+        sizer->Add(num_ctrl, wxSizerFlags().Border(wxLEFT));
         sizer->AddSpacer(8);
         left_panel->SetSizer(sizer);
     }
@@ -141,6 +156,7 @@ metatile_editor_t::metatile_editor_t(wxWindow* parent, model_t& model, std::shar
     
     chr_combo->Bind(wxEVT_COMBOBOX, &metatile_editor_t::on_combo_select, this);
     chr_combo->Bind(wxEVT_TEXT, &metatile_editor_t::on_combo_text, this);
+    num_ctrl->Bind(wxEVT_SPINCTRL, &metatile_editor_t::on_num, this);
     Bind(wxEVT_MENU, &metatile_editor_t::on_active<0>, this, ID_ATTR0);
     Bind(wxEVT_MENU, &metatile_editor_t::on_active<1>, this, ID_ATTR1);
     Bind(wxEVT_MENU, &metatile_editor_t::on_active<2>, this, ID_ATTR2);
@@ -209,4 +225,10 @@ void metatile_editor_t::model_refresh()
     chr_combo->SetValue(chr_name);
 
     load_chr();
+}
+
+void metatile_editor_t::on_num(wxCommandEvent& event)
+{
+    metatiles->num = num_ctrl->GetValue();
+    Refresh();
 }

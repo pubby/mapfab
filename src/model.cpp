@@ -1,5 +1,53 @@
 #include "model.hpp"
 
+#include <ranges>
+
+////////////////////////////////////////////////////////////////////////////////
+// object_t ////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+void object_t::append_vec(std::vector<std::uint16_t>& vec) const
+{
+    auto const append_str = [&](std::string const& str)
+    {
+        for(char c : str)
+            vec.push_back(c);
+        vec.push_back('\0');
+    };
+
+    vec.push_back(position.x);
+    vec.push_back(position.y);
+    append_str(name);
+    append_str(oclass);
+    vec.push_back(fields.size());
+    for(auto const& field : fields)
+    {
+        append_str(field.first);
+        append_str(field.first);
+    }
+}
+
+void object_t::from_vec(std::uint16_t*& ptr)
+{
+    auto const from_str = [&]() -> std::string
+    {
+        std::string ret;
+        while(char c = *ptr++)
+            ret.push_back(c);
+        return ret;
+    };
+
+    position.x = *ptr++;
+    position.y = *ptr++;
+    name = from_str();
+    oclass = from_str();
+
+    unsigned const num_fields = *ptr++;
+    fields.clear();
+    for(unsigned i = 0; i < num_fields; ++i)
+        fields.insert({ from_str(), from_str() });
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // select_map_t ////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -203,8 +251,20 @@ void metatile_model_t::refresh_chr(chr_array_t const& chr, palette_array_t const
     chr_bitmaps = chr_to_bitmaps(chr.data(), chr.size(), palette.data());
 }
 
-void metatile_model_t::refresh_metatiles()
+////////////////////////////////////////////////////////////////////////////////
+// level_model_t ///////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+void level_model_t::clear_metatiles()
 {
+    metatile_bitmaps.clear();
+}
+
+void level_model_t::refresh_metatiles(metatile_model_t const& metatiles, chr_array_t const& chr, palette_array_t const& palette)
+{
+    auto chr_bitmaps = chr_to_bitmaps(chr.data(), chr.size(), palette.data());
+
+    unsigned i = 0;
     metatile_bitmaps.clear();
     for(coord_t c : dimen_range({ 16, 16 }))
     {
@@ -213,22 +273,55 @@ void metatile_model_t::refresh_metatiles()
         {
             wxMemoryDC dc;
             dc.SelectObject(bitmap);
+
             for(int y = 0; y < 2; ++y)
             for(int x = 0; x < 2; ++x)
             {
                 coord_t const c0 = { c.x*2 + x, c.y*2 + y };
-                if(in_bounds(c0, chr_layer.tiles.dimen()))
+                if(in_bounds(c0, metatiles.chr_layer.tiles.dimen()))
                 {
-                    std::uint8_t const i = chr_layer.tiles.at({ c.x*2 + x, c.y*2 + y });
-                    std::uint8_t const a = chr_layer.attributes.at(c);
+                    std::uint8_t const i = metatiles.chr_layer.tiles.at({ c.x*2 + x, c.y*2 + y });
+                    std::uint8_t const a = metatiles.chr_layer.attributes.at(c);
                     dc.DrawBitmap(chr_bitmaps.at(i)[a], { x*8, y*8 }, false);
                 }
+            }
+
+            if(i >= metatiles.num)
+            {
+                dc.SetPen(wxPen(wxColor(255, 0, 0), 2, wxPENSTYLE_SOLID));
+                dc.DrawLine(1, 1, 14, 14);
+                dc.SetPen(wxPen(wxColor(0, 0, 255), 2, wxPENSTYLE_SOLID));
+                dc.DrawLine(1, 14, 14, 1);
             }
         }
 
         metatile_bitmaps.push_back(std::move(bitmap));
+        ++i;
     }
 }
+
+/* TODO
+void level_model_t::reindex_objects()
+{
+    std::unordered_map<std::string, std::vector<object_t*>> map;
+
+    for(object_t& o : objects)
+        map[o.oclass].push_back(&o);
+
+    for(auto& pair : map)
+    {
+        auto& vec = pair.second;
+        std::stable_sort(vec.begin(), vec.end(), [&](object_t* a, object_t& b)
+        {
+            return a->index < b->index;
+        });
+
+        unsigned index = 0;
+        for(object_t* o : vec)
+            o->index = ++index;
+    }
+}
+*/
 
 ////////////////////////////////////////////////////////////////////////////////
 // model_t /////////////////////////////////////////////////////////////////////
@@ -257,10 +350,30 @@ undo_t model_t::operator()(undo_level_dimen_t const& undo)
     return ret;
 }
 
-undo_t model_t::operator()(undo_level_palette_t const& undo)
+undo_t model_t::operator()(undo_new_object_t const& undo)
 {
-    auto ret = undo_level_palette_t{ undo.model, undo.model->palette };
-    undo.model->palette = undo.palette;
+    auto ret = undo_delete_object_t{ undo.level };
+    for(unsigned index : undo.indices | std::views::reverse)
+        ret.objects.emplace_back(index, undo.level->objects.at(index));
+    for(unsigned index : undo.indices)
+        undo.level->objects.erase(undo.level->objects.begin() + index);
+    return ret;
+}
+
+undo_t model_t::operator()(undo_delete_object_t const& undo)
+{
+    auto ret = undo_new_object_t{ undo.level };
+    for(auto const& pair : undo.objects | std::views::reverse)
+        ret.indices.push_back(pair.first);
+    for(auto const& pair : undo.objects)
+        undo.level->objects.insert(undo.level->objects.begin() + pair.first, pair.second);
+    return ret;
+}
+
+undo_t model_t::operator()(undo_edit_object_t const& undo)
+{
+    auto ret = undo_edit_object_t{ undo.level, undo.index, undo.level->objects.at(undo.index) };
+    undo.level->objects.at(undo.index) = undo.object;
     return ret;
 }
 
@@ -278,122 +391,265 @@ palette_array_t model_t::palette_array(unsigned palette_index)
 
 constexpr std::uint8_t SAVE_VERSION = 1;
 
-void model_t::write_file(FILE* fp, std::string const& chr_path, std::string const& collision_path) const
+void model_t::write_file(FILE* fp, std::filesystem::path base_path) const
 {
-    assert(false);
-    /* TODO
+    base_path.remove_filename();
+
     auto const write_str = [&](std::string const& str)
     {
-        std::fwrite(str.c_str(), str.size()+1, 1, fp);
+        if(!str.empty())
+            std::fwrite(str.c_str(), str.size(), 1, fp);
+        std::fputc(0, fp);
+    };
+
+    auto const write8 = [&](std::uint8_t i)
+    {
+        std::fputc(i & 0xFF, fp);
+    };
+
+    auto const write16 = [&](std::uint16_t i)
+    {
+        std::fputc(i & 0xFF, fp); // Lo
+        std::fputc((i >> 8) & 0xFF, fp); // Hi
     };
 
     std::fwrite("MapFab", 6, 1, fp);
 
     // Version:
-    std::fputc(SAVE_VERSION, fp);
-
+    write8(SAVE_VERSION);
+    
     // Unused:
-    std::fputc(0, fp);
+    write8(0);
 
-    // Paths:
-    write_str(chr_path);
-    write_str(collision_path);
+    // Collision file:
+    write_str(std::filesystem::proximate(collision_path, base_path));
+
+    // CHR:
+    write8(chr_files.size() & 0xFF);
+    for(auto const& file : chr_files)
+    {
+        write_str(file.name);
+        write_str(std::filesystem::proximate(file.path, base_path));
+    }
 
     // Palettes:
-    std::fputc(palette.color_layer.num-1, fp);
+    write8(palette.color_layer.num & 0xFF);
     for(std::uint8_t data : palette.color_layer.tiles)
-        std::fputc(data, fp);
+        write8(data);
 
     // Metatiles:
-    std::fputc(metatiles.palette, fp);
-    std::fputc(metatiles.num-1, fp);
-    for(std::uint8_t data : metatiles.chr_layer.tiles)
-        std::fputc(data, fp);
-    for(std::uint8_t data : metatiles.chr_layer.attributes)
-        std::fputc(data, fp);
-    for(std::uint8_t data : metatiles.collision_layer.tiles)
-        std::fputc(data, fp);
+    write8(metatiles.size() & 0xFF);
+    for(auto const& mt : metatiles)
+    {
+        write_str(mt->name.c_str());
+        write_str(mt->chr_name.c_str());
+        write8(mt->palette & 0xFF);
+        write8(mt->num & 0xFF);
+        for(std::uint8_t data : mt->chr_layer.tiles)
+            write8(data);
+        for(std::uint8_t data : mt->chr_layer.attributes)
+            write8(data);
+        for(std::uint8_t data : mt->collision_layer.tiles)
+            write8(data);
+    }
+
+    // Object classes:
+    write8(object_classes.size() & 0xFF);
+    for(auto const& oc : object_classes)
+    {
+        write_str(oc->name.c_str());
+        write8(oc->color.r & 0xFF);
+        write8(oc->color.g & 0xFF);
+        write8(oc->color.b & 0xFF);
+        write8(oc->fields.size() & 0xFF);
+        for(auto const& field : oc->fields)
+        {
+            write_str(field.name.c_str());
+            write_str(field.type.c_str());
+        }
+    }
 
     // Levels:
-    std::fputc(levels.size()-1, fp);
+    write8(levels.size() & 0xFF);
     for(auto const& level : levels)
     {
         write_str(level->name.c_str());
-        std::fputc(level->palette, fp);
-        std::fputc(level->dimen().w, fp);
-        std::fputc(level->dimen().h, fp);
+        write_str(level->macro_name.c_str());
+        write_str(level->chr_name.c_str());
+        write8(level->palette & 0xFF);
+        write_str(level->metatiles_name.c_str());
+        write8(level->dimen().w & 0xFF);
+        write8(level->dimen().h & 0xFF);
         for(std::uint8_t data : level->metatile_layer.tiles)
-            std::fputc(data, fp);
-        std::fputc(0, fp); // TODO: Number of objects
+            write8(data);
+        write16(level->objects.size());
+        for(auto const& obj : level->objects)
+        {
+            write_str(obj.name.c_str());
+            write_str(obj.oclass.c_str());
+            write16(obj.position.x);
+            write16(obj.position.y);
+            for(auto const& oc : object_classes)
+            {
+                if(oc->name == obj.oclass)
+                {
+                    for(auto const& field : oc->fields)
+                    {
+                        auto it = obj.fields.find(field.name);
+                        if(it != obj.fields.end())
+                            write_str(it->second);
+                        else
+                            write8(0);
+                    }
+                    break;
+                }
+            }
+        }
     }
-    */
 }
 
-void model_t::read_file(FILE* fp, std::string& chr_path, std::string& collisions_path)
+void model_t::read_file(FILE* fp, std::filesystem::path base_path)
 {
-    assert(false);
-    /* TODO
-    constexpr char const* ERROR_STRING = "Invalid MapFab file.";
+    base_path.remove_filename();
 
-    auto const get = [&]() -> char
+    auto const get8 = [&](bool adjust = false) -> unsigned
     {
         int const got = std::getc(fp);
         if(got == EOF)
-            throw std::runtime_error(ERROR_STRING);
-        return static_cast<char>(got);
+            throw std::runtime_error("Unable to read 8-bit value.");
+        if(adjust && got == 0)
+            return 256;
+        return got;
+    };
+
+    auto const get16 = [&]() -> std::uint16_t
+    {
+        int const lo = std::getc(fp);
+        int const hi = std::getc(fp);
+        if(lo == EOF || hi == EOF)
+            throw std::runtime_error("Unable to read 16-bit value.");
+        return (lo & 0xFF) | ((hi & 0xFF) << 8);
     };
 
     auto const get_str = [&]() -> std::string
     {
         std::string ret;
-        while(char c = get())
+        while(char c = get8())
             ret.push_back(c);
         return ret;
     };
 
+    auto const get_path = [&]() -> std::filesystem::path
+    {
+        std::filesystem::path path = get_str();
+
+        if(!path.empty() && path.is_relative())
+            path = base_path / path;
+
+        return path;
+    };
+
     char buffer[8];
     if(!std::fread(buffer, 8, 1, fp))
-        throw std::runtime_error(ERROR_STRING);
+        throw std::runtime_error("Unable to read magic number.");
     if(memcmp(buffer, "MapFab", 6) != 0)
-        throw std::runtime_error(ERROR_STRING);
+        throw std::runtime_error("Incorrect magic number.");
     if(buffer[6] > SAVE_VERSION)
         throw std::runtime_error("File is from a newer version of MapFab.");
 
-    // Paths:
-    chr_path = get_str();
-    collisions_path = get_str();
+    // Collision file:
+    collision_path = get_path();
+
+    // CHR:
+    unsigned const num_chr = get8(true);
+    chr_files.clear();
+    for(unsigned i = 0; i < num_chr; ++i)
+    {
+        auto& chr = chr_files.emplace_back();
+        chr.name = get_str();
+        chr.path = get_path();
+        chr.load();
+    }
 
     // Palettes:
-    palette.num = get()+1;
+    palette.num = get8(true);
     for(std::uint8_t& data : palette.color_layer.tiles)
-        data = get();
+        data = get8();
 
     // Metatiles:
-    metatiles.palette = get();
-    metatiles.num = get()+1;
-    for(std::uint8_t& data : metatiles.chr_layer.tiles)
-        data = get();
-    for(std::uint8_t& data : metatiles.chr_layer.attributes)
-        data = get();
-    for(std::uint8_t& data : metatiles.collision_layer.tiles)
-        data = get();
+    unsigned const num_mt = get8(true);
+    metatiles.clear();
+    for(unsigned i = 0; i < num_mt; ++i)
+    {
+        auto& mt = *metatiles.emplace_back(std::make_shared<metatile_model_t>());
+        mt.name = get_str();
+        mt.chr_name = get_str();
+        mt.palette = get8();
+        mt.num = get8(true);
+        assert(mt.chr_layer.tiles.size() == 32 * 32);
+        for(std::uint8_t& data : mt.chr_layer.tiles)
+            data = get8();
+        for(std::uint8_t& data : mt.chr_layer.attributes)
+            data = get8();
+        for(std::uint8_t& data : mt.collision_layer.tiles)
+            data = get8();
+    }
+
+    // Object classes:
+    unsigned const num_oc = get8(true);
+    for(auto const& oc : object_classes)
+    {
+        oc->name = get_str();
+        oc->color.r = get8();
+        oc->color.g = get8();
+        oc->color.b = get8();
+        unsigned const num_fields = get8();
+        oc->fields.clear();
+        for(unsigned i = 0; i < num_fields; ++i)
+        {
+            auto& field = oc->fields.emplace_back();
+            field.name = get_str();
+            field.type = get_str();
+        }
+    }
 
     // Levels:
+    unsigned const num_levels = get8(true);
     levels.clear();
-    levels.resize(get()+1);
-    for(auto& level : levels)
+    for(unsigned i = 0; i < num_levels; ++i)
     {
-        level = std::make_shared<level_model_t>();
-        level->name = get_str();
-        level->palette = get();
-        level->metatile_layer.tiles.resize({ get(), get() });
-        for(std::uint8_t& data : level->metatile_layer.tiles)
-            data = get();
-        get(); // TODO: Number of objects
+        auto& level = *levels.emplace_back(std::make_shared<level_model_t>());
+        level.name = get_str();
+        level.macro_name = get_str();
+        level.chr_name = get_str();
+        level.palette = get8();
+        level.metatiles_name = get_str();
+        level.metatile_layer.tiles.resize({ get8(true), get8(true) });
+        for(std::uint8_t& data : level.metatile_layer.tiles)
+            data = get8();
+        unsigned const num_objects = get16();
+        for(unsigned i = 0; i < num_objects; ++i)
+        {
+            auto& obj = level.objects.emplace_back();
+
+            obj.name = get_str();
+            obj.oclass = get_str();
+            obj.position.x = static_cast<std::int16_t>(get16());
+            obj.position.y = static_cast<std::int16_t>(get16());
+
+            for(auto const& oc : object_classes)
+            {
+                if(oc->name == obj.oclass)
+                {
+                    for(auto const& field : oc->fields)
+                        obj.fields.emplace(field.name, get_str());
+                    break;
+                }
+            }
+        }
     }
 
     modified = modified_since_save = false;
-    */
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -425,5 +681,13 @@ void chr_file_t::load()
     if(path.empty())
         return;
     std::vector<std::uint8_t> data = read_binary_file(path.c_str());
+
+    std::string ext = path.extension().string();
+    for(char& c : ext)
+        c = std::tolower(c);
+
+    if(ext == ".png")
+        data = png_to_chr(data.data(), data.size(), false);
+
     std::copy_n(data.begin(), std::min(data.size(), chr.size()), chr.begin());
 }

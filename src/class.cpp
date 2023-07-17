@@ -3,33 +3,53 @@
 field_def_t::field_def_t(wxWindow* parent, class_field_t const& field, unsigned index)
 : wxPanel(parent, wxID_ANY)
 , index(index)
+, field(field)
 {
     wxBoxSizer* row_sizer = new wxBoxSizer(wxHORIZONTAL);
 
     wxStaticText* type_label = new wxStaticText(this, wxID_ANY, "Type:", wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT);
-    wxTextCtrl* type_entry = new wxTextCtrl(this, wxID_ANY, field.type);
+    type_entry = new wxTextCtrl(this, wxID_ANY, field.type);
     type_entry->SetMinSize(wxSize(100, 24));
+    type_entry->SetWindowStyleFlag(wxTE_READONLY);
 
     wxStaticText* name_label = new wxStaticText(this, wxID_ANY, "Name:", wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT);
-    wxTextCtrl* name_entry = new wxTextCtrl(this, wxID_ANY, field.name);
-    name_entry->SetMinSize(wxSize(300, 24));
+    name_entry = new wxTextCtrl(this, wxID_ANY, field.name);
+    name_entry->SetWindowStyleFlag(wxTE_READONLY);
+    name_entry->SetMinSize(wxSize(200, 24));
     name_entry->SetMaxSize(wxSize(200, 24));
 
+    wxButton* retype_button = new wxButton(this, wxID_ANY, "Retype");
+    wxButton* rename_button = new wxButton(this, wxID_ANY, "Rename");
     wxButton* delete_button = new wxButton(this, wxID_ANY, "Delete");
 
     row_sizer->Add(type_label, wxSizerFlags().Left().Border().Center());
     row_sizer->Add(type_entry, wxSizerFlags().Left().Border().Center());
+    row_sizer->Add(retype_button, wxSizerFlags().Left().Border().Center());
     row_sizer->AddSpacer(16);
     row_sizer->Add(name_label, wxSizerFlags().Left().Border().Center());
     row_sizer->Add(name_entry, wxSizerFlags().Left().Border().Center());
     row_sizer->AddSpacer(16);
+    row_sizer->Add(rename_button, wxSizerFlags().Left().Border().Center());
     row_sizer->Add(delete_button, wxSizerFlags().Left().Border().Center());
 
+    rename_button->Bind(wxEVT_COMMAND_BUTTON_CLICKED, &field_def_t::on_rename, this);
     delete_button->Bind(wxEVT_COMMAND_BUTTON_CLICKED, &field_def_t::on_click, this);
-    type_entry->Bind(wxEVT_TEXT, &field_def_t::on_type, this);
-    name_entry->Bind(wxEVT_TEXT, &field_def_t::on_name, this);
+    retype_button->Bind(wxEVT_COMMAND_BUTTON_CLICKED, &field_def_t::on_retype, this);
 
     SetSizerAndFit(row_sizer);
+}
+
+void field_def_t::on_rename(wxCommandEvent& event)
+{ 
+    wxTextEntryDialog dialog(
+        this, "New Name:", "Rename Field", field.name);
+
+    if(dialog.ShowModal() == wxID_OK)
+    {
+        std::string new_name = dialog.GetValue().ToStdString();
+        static_cast<class_editor_t*>(GetParent())->on_rename(index, new_name); 
+        name_entry->SetValue(field.name);
+    }
 }
 
 void field_def_t::on_click(wxCommandEvent& event)
@@ -37,14 +57,17 @@ void field_def_t::on_click(wxCommandEvent& event)
     static_cast<class_editor_t*>(GetParent())->on_delete(index); 
 }
 
-void field_def_t::on_type(wxCommandEvent& event)
+void field_def_t::on_retype(wxCommandEvent& event)
 { 
-    static_cast<class_editor_t*>(GetParent())->on_type(index, event.GetString().ToStdString()); 
-}
+    wxTextEntryDialog dialog(
+        this, "New Type:", "Retype Field", field.type);
 
-void field_def_t::on_name(wxCommandEvent& event)
-{ 
-    static_cast<class_editor_t*>(GetParent())->on_name(index, event.GetString().ToStdString()); 
+    if(dialog.ShowModal() == wxID_OK)
+    {
+        std::string new_type = dialog.GetValue().ToStdString();
+        static_cast<class_editor_t*>(GetParent())->on_retype(index, new_type); 
+        type_entry->SetValue(field.type);
+    }
 }
 
 class_editor_t::class_editor_t(wxWindow* parent, model_t& model, std::shared_ptr<object_class_t> oc_)
@@ -111,18 +134,60 @@ void class_editor_t::on_delete(unsigned index)
 
 void class_editor_t::on_new(wxCommandEvent& event)
 {
-    new_field(oc->fields.emplace_back());
-    Fit();
+    wxTextEntryDialog dialog(
+        this, "Name:", "New Field");
+
+    if(dialog.ShowModal() == wxID_OK)
+    {
+        std::string new_name = dialog.GetValue().ToStdString();
+
+        for(auto const& field : oc->fields)
+        {
+            if(field.name == new_name)
+            {
+                wxMessageBox( wxT("Names must be unique."), wxT("Error"), wxICON_ERROR);
+                return;
+            }
+        }
+
+        auto& field = oc->fields.emplace_back();
+        field.name = new_name;
+        new_field(field);
+        Fit();
+    }
 }
 
-void class_editor_t::on_type(unsigned index, std::string str)
+void class_editor_t::on_retype(unsigned index, std::string str)
 {
     oc->fields[index].type = str;
 }
 
-void class_editor_t::on_name(unsigned index, std::string str)
+void class_editor_t::on_rename(unsigned index, std::string str)
 {
+    for(unsigned i = 0; i < oc->fields.size(); ++i)
+    {
+        if(i != index && oc->fields[i].name == str)
+        {
+            wxMessageBox( wxT("Names must be unique."), wxT("Error"), wxICON_ERROR);
+            return;
+        }
+    }
+
+    std::string const old_name = oc->fields[index].name;
     oc->fields[index].name = str;
+
+    for(auto& level : model.levels)
+    {
+        for(auto& object : level->objects)
+        {
+            if(object.oclass == oc->name)
+            {
+                auto it = object.fields.find(old_name);
+                if(it != object.fields.end())
+                    object.fields[str] = it->second;
+            }
+        }
+    }
 }
 
 void class_editor_t::on_color(wxColourPickerEvent& event)
