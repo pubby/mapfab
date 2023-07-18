@@ -39,7 +39,7 @@ struct object_t
     std::unordered_map<std::string, std::string> fields;
 
     void append_vec(std::vector<std::uint16_t>& vec) const;
-    void from_vec(std::uint16_t*& ptr);
+    void from_vec(std::uint16_t const*& ptr, std::uint16_t const* end);
     auto operator<=>(object_t const&) const = default;
 };
 
@@ -128,25 +128,62 @@ private:
     grid_t<std::uint8_t> m_selection;
 };
 
+enum
+{
+    LAYER_COLOR,
+    LAYER_CHR,
+    LAYER_COLLISION,
+    LAYER_METATILE,
+    LAYER_OBJECTS,
+};
+
 struct tile_copy_t
 {
     unsigned format;
-    grid_t<std::uint16_t> tiles;
+    std::variant<grid_t<std::uint16_t>, std::vector<object_t>> data;
 
     std::vector<std::uint16_t> to_vec() const
     {
-        std::vector<std::uint16_t> vec = { format, tiles.dimen().w, tiles.dimen().h };
-        vec.insert(vec.end(), tiles.begin(), tiles.end());
-        return vec;
+        if(auto* grid = std::get_if<grid_t<std::uint16_t>>(&data))
+        {
+            assert(format != LAYER_OBJECTS);
+            std::vector<std::uint16_t> vec = { format, grid->dimen().w, grid->dimen().h };
+            vec.insert(vec.end(), grid->begin(), grid->end());
+            return vec;
+        }
+        else if(auto* objects = std::get_if<std::vector<object_t>>(&data))
+        {
+            assert(format == LAYER_OBJECTS);
+            std::vector<std::uint16_t> vec = { format, objects->size() };
+            for(auto const& object : *objects)
+                object.append_vec(vec);
+            return vec;
+        }
+
+        throw std::runtime_error("Unable to convert clip data to vec.");
     }
 
     static tile_copy_t from_vec(std::vector<std::uint16_t> const& vec)
     {
         tile_copy_t ret = { vec.at(0) };
-        ret.tiles.resize({ vec.at(1), vec.at(2) });
-        unsigned i = 3;
-        for(coord_t c : dimen_range(ret.tiles.dimen()))
-            ret.tiles[c] = vec.at(i++);
+        if(ret.format == LAYER_OBJECTS)
+        {
+            unsigned const size = vec.at(1);
+            std::vector<object_t> objects;
+            std::uint16_t const* ptr = vec.data() + 2;
+            for(unsigned i = 0; i < size; ++i)
+                objects.emplace_back().from_vec(ptr, &*vec.end());
+            ret.data = std::move(objects);
+        }
+        else
+        {
+            grid_t<std::uint16_t> tiles;
+            tiles.resize({ vec.at(1), vec.at(2) });
+            unsigned i = 3;
+            for(coord_t c : dimen_range(tiles.dimen()))
+                tiles[c] = vec.at(i++);
+            ret.data = std::move(tiles);
+        }
         return ret;
     }
 };
@@ -154,14 +191,6 @@ struct tile_copy_t
 struct object_copy_t
 {
     std::vector<object_t> objects;
-};
-
-enum
-{
-    LAYER_COLOR,
-    LAYER_CHR,
-    LAYER_COLLISION,
-    LAYER_METATILE,
 };
 
 class tile_layer_t

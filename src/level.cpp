@@ -264,7 +264,8 @@ void metatile_picker_t::draw_tiles(wxDC& dc)
 
 void level_canvas_t::draw_tiles(wxDC& dc)
 {
-    bool const object_select = selecting_objects && mouse_down && model.tool == TOOL_SELECT;
+    bool const object_select = 
+        selecting_objects && mouse_down && model.tool == TOOL_SELECT && level->current_layer == OBJECT_LAYER;
 
     canvas_box_t::draw_tiles(dc);
 
@@ -345,6 +346,31 @@ void level_canvas_t::draw_tiles(wxDC& dc)
         dc.DrawCircle(at.x, at.y, object_radius());
         dc.DrawPoint(at.x, at.y);
     }
+
+    if(level->current_layer == OBJECT_LAYER)
+    {
+        if(model.paste && model.paste->format == LAYER_OBJECTS)
+        {
+            if(auto const* objects = std::get_if<std::vector<object_t>>(&model.paste->data))
+            {
+                dc.SetPen(wxPen(wxColor(255, 0, 255, 200), 0, wxPENSTYLE_SOLID));
+                dc.SetBrush(wxBrush(wxColor(255, 255, 0, 127)));
+
+                for(auto const& object : *objects)
+                {
+                    coord_t position = object.position;
+                    position += from_screen(mouse_current, {1,1});
+                    position.x += margin().w;
+                    position.y += margin().h;
+                    position = vec_mul(position, scale);
+
+                    dc.DrawCircle(position.x, position.y, object_radius());
+                    dc.DrawPoint(position.x, position.y);
+                }
+            }
+        }
+    }
+
     dc.SetLogicalScale(1.0f, 1.0f);
 
     if(object_select)
@@ -360,6 +386,7 @@ void level_canvas_t::draw_tiles(wxDC& dc)
             dc.SetBrush(wxBrush(wxColor(255, 0, 0, 127)));
         dc.DrawRectangle(c0.x, c0.y, (c1 - c0).x, (c1 - c0).y);
     }
+
 }
 
 void level_canvas_t::on_down(mouse_button_t mb, coord_t at)
@@ -375,6 +402,9 @@ void level_canvas_t::on_down(mouse_button_t mb, coord_t at)
         {
             for(int i : level->object_selector)
             {
+                if(i >= level->objects.size())
+                    continue;
+
                 auto& object = level->objects[i];
                 coord_t const at = crop(object.position) + to_coord(margin());
 
@@ -488,6 +518,37 @@ void level_canvas_t::on_up(mouse_button_t mb, coord_t at)
 {
     if(level->current_layer == OBJECT_LAYER)
     {
+        if(model.paste && model.paste->format == LAYER_OBJECTS)
+        {
+            if(mb == MB_RIGHT)
+                goto done_paste;
+            else if(mb == MB_LEFT)
+            {
+                model.modify();
+
+                if(auto const* objects = std::get_if<std::vector<object_t>>(&model.paste->data))
+                {
+                    undo_new_object_t undo = { level.get() };
+
+                    for(auto const& object : *objects)
+                    {
+                        undo.indices.push_back(level->objects.size());
+                        auto& new_object = level->objects.emplace_back(object);
+                        new_object.position += from_screen(at, {1,1});
+                    }
+
+                    std::sort(undo.indices.begin(), undo.indices.end(), std::greater<>());
+                    static_cast<level_editor_t*>(GetParent())->history.push(std::move(undo));
+                }
+
+                post_update();
+            done_paste:
+                model.paste.reset();
+                Refresh();
+                return;
+            }
+        }
+
         bool const shift = wxGetKeyState(WXK_SHIFT);
         dragging_objects = false;
 
@@ -525,7 +586,8 @@ void level_canvas_t::on_motion(coord_t at)
         coord_t const pixel = from_screen(at, {1,1});
 
         for(int i : level->object_selector)
-            level->objects[i].position += (pixel - drag_last);
+            if(i < level->objects.size())
+                level->objects[i].position += (pixel - drag_last);
 
         drag_last = pixel;
 
@@ -766,7 +828,15 @@ void level_editor_t::on_metatiles_select(wxCommandEvent& event)
 {
     int const index = event.GetSelection();
     if(index >= 0 && index < model.metatiles.size())
+    {
         level->metatiles_name = model.metatiles[index]->name;
+
+        level->chr_name = model.metatiles[index]->chr_name;
+        chr_combo->SetValue(level->chr_name);
+
+        level->palette = model.metatiles[index]->palette;
+        palette_ctrl->SetValue(level->palette);
+    }
     load_metatiles();
 }
 
@@ -798,12 +868,14 @@ void level_editor_t::on_delete(wxCommandEvent& event)
     undo_delete_object_t undo = { level.get() };
 
     for(int i : level->object_selector)
-        undo.objects.emplace_back(i, level->objects.at(i));
+        if(i < level->objects.size())
+            undo.objects.emplace_back(i, level->objects.at(i));
 
     history.push(std::move(undo));
 
     for(int i : level->object_selector | std::views::reverse)
-        level->objects.erase(level->objects.begin() + i);
+        if(i < level->objects.size())
+            level->objects.erase(level->objects.begin() + i);
 
     level->object_selector.clear();
     Refresh();
@@ -817,7 +889,53 @@ void level_editor_t::on_macro_name(wxCommandEvent& event)
 tile_copy_t level_editor_t::copy(bool cut)
 {
     if(level->current_layer == OBJECT_LAYER)
-        ; // TODO
+    {
+        std::vector<object_t> objects;
+
+        coord_t avg = {};
+        unsigned count = 0;
+        for(int i : level->object_selector)
+        {
+            if(i >= level->objects.size())
+                continue;
+            avg += level->objects.at(i).position;
+            count += 1;
+        }
+
+        if(count > 0)
+            avg = vec_div(avg, count);
+
+        if(cut && !level->object_selector.empty())
+        {
+            undo_delete_object_t undo = { level.get() };
+
+            for(int i : level->object_selector)
+                if(i < level->objects.size())
+                    undo.objects.emplace_back(i, level->objects.at(i));
+
+            history.push(std::move(undo));
+        }
+
+        for(int i : level->object_selector | std::views::reverse)
+        {
+            if(i >= level->objects.size())
+                continue;
+
+            auto& copied = objects.emplace_back(level->objects.at(i));
+            copied.position -= avg;
+            
+            if(cut)
+                level->objects.erase(level->objects.begin() + i);
+        }
+
+        if(cut)
+        {
+            level->object_selector.clear();
+            Refresh();
+        }
+
+        return { LAYER_OBJECTS, std::move(objects) };
+    }
     else
         return editor_t::copy(cut);
 }

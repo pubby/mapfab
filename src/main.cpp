@@ -134,7 +134,7 @@ private:
 
             bool const metatiles = notebook->GetSelection() == TAB_METATILES;
 
-            bool const can_fill = model.tool == TOOL_SELECT && editor->layer().canvas_selector.select_rect();
+            bool const can_fill = model.tool == TOOL_SELECT;
             cut->Enable(can_fill);
             copy->Enable(can_fill);
             fill->Enable(can_fill);

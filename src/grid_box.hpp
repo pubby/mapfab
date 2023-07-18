@@ -90,6 +90,8 @@ public:
     void on_right_click(wxMouseEvent& event)
     {
         rtab_id = GetList()->HitTest(wxPoint(event.GetX(), event.GetY()));
+        if(rtab_id < 0)
+            rtab_id = GetList()->GetCount() - 1;
 
         wxMenu tab_menu;
         tab_menu.Append(ID_R_NEW_PAGE, std::string("&New ") + P::name);

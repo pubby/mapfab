@@ -259,16 +259,6 @@ void canvas_box_t::on_up(mouse_button_t mb, coord_t mouse_end)
             goto done_paste;
         else if(mb == MB_LEFT)
         {
-            /* TODO
-            bool modify = false;
-            tiles().for_each_picked(pen, [&](coord_t c, std::uint8_t tile)
-            { 
-                modify |= tiles().check_modify(c, tile);
-            });
-
-            if(!modify)
-                return;
-            */
             model.modify();
 
             //history.push(make_undo({ pen, picker().select_rect().d }));
@@ -351,15 +341,18 @@ void canvas_box_t::draw_overlays(wxDC& dc)
 
     if(pasting())
     {
-        dc.SetPen(wxPen(wxColor(255, 255, 0), 0));
-        dc.SetBrush(wxBrush(wxColor(255, 0, 255, 127)));
-        coord_t const pen = from_screen(mouse_current);
-        for(coord_t c : dimen_range(model.paste->tiles.dimen()))
+        if(auto* grid = std::get_if<grid_t<std::uint16_t>>(&model.paste->data))
         {
-            if(~model.paste->tiles[c])
+            dc.SetPen(wxPen(wxColor(255, 255, 0), 0));
+            dc.SetBrush(wxBrush(wxColor(255, 0, 255, 127)));
+            coord_t const pen = from_screen(mouse_current);
+            for(coord_t c : dimen_range(grid->dimen()))
             {
-                coord_t const c0 = to_screen(c + pen);
-                dc.DrawRectangle(c0.x, c0.y, tile_size().w, tile_size().h);
+                if(~(*grid)[c])
+                {
+                    coord_t const c0 = to_screen(c + pen);
+                    dc.DrawRectangle(c0.x, c0.y, tile_size().w, tile_size().h);
+                }
             }
         }
     }

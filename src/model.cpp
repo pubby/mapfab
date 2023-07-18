@@ -27,18 +27,25 @@ void object_t::append_vec(std::vector<std::uint16_t>& vec) const
     }
 }
 
-void object_t::from_vec(std::uint16_t*& ptr)
+void object_t::from_vec(std::uint16_t const*& ptr, std::uint16_t const* end)
 {
+    auto const get = [&]() -> std::uint16_t
+    {
+        if(ptr >= end)
+            throw std::runtime_error("Data out of bounds.");
+        return *ptr++;
+    };
+
     auto const from_str = [&]() -> std::string
     {
         std::string ret;
-        while(char c = *ptr++)
+        while(char c = get())
             ret.push_back(c);
         return ret;
     };
 
-    position.x = *ptr++;
-    position.y = *ptr++;
+    position.x = static_cast<std::int16_t>(get());
+    position.y = static_cast<std::int16_t>(get());
     name = from_str();
     oclass = from_str();
 
@@ -134,26 +141,29 @@ tile_copy_t tile_layer_t::copy(bool cut)
 {
     rect_t const rect = crop(canvas_selector.select_rect(), canvas_dimen());
     tile_copy_t copy = { format() };
-    copy.tiles.resize(rect.d);
+    grid_t<std::uint16_t> tiles;
+    tiles.resize(rect.d);
     for(coord_t c : rect_range(rect))
     {
         if(canvas_selector[c])
         {
-            copy.tiles[c - rect.c] = get(c);
+            tiles[c - rect.c] = get(c);
             if(cut)
                 reset(c);
         }
         else
-            copy.tiles[c - rect.c] = ~0u;
+            tiles[c - rect.c] = ~0u;
     }
+    copy.data = std::move(tiles);
     return copy;
 }
 
 void tile_layer_t::paste(tile_copy_t const& copy, coord_t at)
 {
-    for(coord_t c : dimen_range(copy.tiles.dimen()))
-        if(~copy.tiles[c] && in_bounds(at + c, canvas_dimen()))
-            set(at + c, copy.tiles[c]);
+    if(auto* grid = std::get_if<grid_t<std::uint16_t>>(&copy.data))
+        for(coord_t c : dimen_range(grid->dimen()))
+            if(~(*grid)[c] && in_bounds(at + c, canvas_dimen()))
+                set(at + c, (*grid)[c]);
 }
 
 void tile_layer_t::dropper(coord_t at) 
@@ -185,26 +195,31 @@ undo_t tile_layer_t::fill()
 
 undo_t tile_layer_t::fill_paste(tile_copy_t const& copy)
 {
-    rect_t const canvas_rect = crop(canvas_selector.select_rect(), canvas_dimen());
-    dimen_t const copy_dimen = copy.tiles.dimen();
-
-    if(!canvas_rect || !copy_dimen)
-        return {};
-
-    undo_t ret = save(canvas_rect);
-
-    canvas_selector.for_each_selected([&](coord_t c)
+    if(auto* grid = std::get_if<grid_t<std::uint16_t>>(&copy.data))
     {
-        std::uint8_t const tile = to_tile(c);
+        rect_t const canvas_rect = crop(canvas_selector.select_rect(), canvas_dimen());
+        dimen_t const copy_dimen = grid->dimen();
 
-        coord_t const o = c - canvas_rect.c;
-        coord_t const p = coord_t{ o.x % copy_dimen.w, o.y % copy_dimen.h };
+        if(!canvas_rect || !copy_dimen)
+            return {};
 
-        if(~copy.tiles[p] && in_bounds(c, canvas_dimen()))
-            set(c, copy.tiles[p]);
-    });
+        undo_t ret = save(canvas_rect);
 
-    return ret;
+        canvas_selector.for_each_selected([&](coord_t c)
+        {
+            std::uint8_t const tile = to_tile(c);
+
+            coord_t const o = c - canvas_rect.c;
+            coord_t const p = coord_t{ o.x % copy_dimen.w, o.y % copy_dimen.h };
+
+            if(~(*grid)[p] && in_bounds(c, canvas_dimen()))
+                set(c, (*grid)[p]);
+        });
+
+        return ret;
+    }
+
+    return {};
 }
 
 undo_t tile_layer_t::save(rect_t rect)
