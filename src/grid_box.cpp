@@ -31,6 +31,8 @@ grid_box_t::grid_box_t(wxWindow* parent, bool can_zoom)
 void grid_box_t::OnPaint(wxPaintEvent& event)
 {
     wxPaintDC dc(this);
+    dc.Clear();
+    DoPrepareDC(dc);
     //wxGCDC gdc(dc);
 #ifdef __WXMSW__
     wxGraphicsRenderer* renderer = wxGraphicsRenderer::GetDirect2DRenderer();
@@ -46,9 +48,6 @@ void grid_box_t::OnPaint(wxPaintEvent& event)
         gc->SetAntialiasMode(wxANTIALIAS_NONE);
 
         auto bmp = gc->CreateBitmap(wxBitmap(16, 16));
-
-        dc.Clear();
-        DoPrepareDC(dc);
 
         for(unsigned y = 0; y < 256; ++y)
         for(unsigned x = 0; x < 256; ++x)
