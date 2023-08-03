@@ -12,6 +12,7 @@
 #include "2d/geometry.hpp"
 
 #include "guard.hpp"
+#include "graphics.hpp"
 #include "nes_colors.hpp"
 
 using namespace i2d;
@@ -41,10 +42,13 @@ constexpr std::array<std::uint8_t, 16> default_palette = {{
 std::vector<std::uint8_t> read_binary_file(char const* filename);
 
 using attr_bitmaps_t = std::array<wxBitmap, 4>;
+using attr_gc_bitmaps_t = std::array<bitmap_t, 4>;
+
+attr_gc_bitmaps_t convert_bitmap(attr_bitmaps_t const&);
 
 std::vector<attr_bitmaps_t> chr_to_bitmaps(std::uint8_t const* data, std::size_t size, std::uint8_t const* palette);
 
-std::vector<wxBitmap> load_collision_file(wxString const& string);
+std::vector<bitmap_t> load_collision_file(wxString const& string);
 
 std::vector<std::uint8_t> png_to_chr(std::uint8_t const* png, std::size_t size, bool chr16);
 

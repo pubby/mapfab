@@ -87,7 +87,7 @@ class_editor_t::class_editor_t(wxWindow* parent, model_t& model, std::shared_ptr
 
         wxStaticText* color_label = new wxStaticText(this, wxID_ANY, "Display Color:", wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT);
         wxColourPickerCtrl* color_picker = new wxColourPickerCtrl(this, wxID_ANY);
-        color_picker->SetColour(*wxWHITE);
+        color_picker->SetColour(wxColor(oc->color.r, oc->color.g, oc->color.b));
 
         row_sizer->Add(color_label, wxSizerFlags().Left().Border().Center());
         row_sizer->Add(color_picker, wxSizerFlags().Left().Border().Center());
@@ -95,8 +95,7 @@ class_editor_t::class_editor_t(wxWindow* parent, model_t& model, std::shared_ptr
         color_picker->Bind(wxEVT_COLOURPICKER_CHANGED, &class_editor_t::on_color, this);
     }
 
-    for(auto const& field : oc->fields)
-        new_field(field);
+    load();
 
     wxButton* new_button = new wxButton(this, wxID_ANY, "New Field");
     main_sizer->Add(field_sizer);
@@ -128,7 +127,7 @@ void class_editor_t::on_delete(unsigned index)
         oc->fields.erase(oc->fields.begin() + index); 
         for(unsigned i = 0; i < field_defs.size(); ++i)
             field_defs[i]->index = i;
-        Fit();
+        FitInside();
         model.modify();
     }
 }
@@ -154,7 +153,7 @@ void class_editor_t::on_new(wxCommandEvent& event)
         auto& field = oc->fields.emplace_back();
         field.name = new_name;
         new_field(field);
-        Fit();
+        FitInside();
         model.modify();
     }
 }
@@ -209,3 +208,14 @@ void class_editor_t::new_field(class_field_t const& field)
     field_sizer->Add(def, wxSizerFlags().Expand());
     model.modify();
 }
+
+void class_editor_t::load()
+{
+    field_defs.clear();
+    for(auto const& field : oc->fields)
+        new_field(field);
+
+    FitInside();
+}
+
+

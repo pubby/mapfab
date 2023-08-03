@@ -25,12 +25,12 @@ static char int_to_char(int i)
 }
 
 template<bool ShowNum>
-void draw_color_tile(wxDC& dc, unsigned color, coord_t at)
+void draw_color_tile(render_t& gc, unsigned color, coord_t at)
 {
     rgb_t const rgb = nes_colors[color % 64];
-    dc.SetPen(wxPen());
-    dc.SetBrush(wxBrush(wxColor(rgb.r, rgb.g, rgb.b)));
-    dc.DrawRectangle(at.x, at.y, color_tile_size, color_tile_size);
+    gc.SetPen(wxPen());
+    gc.SetBrush(wxBrush(wxColor(rgb.r, rgb.g, rgb.b)));
+    gc.DrawRectangle(at.x, at.y, color_tile_size, color_tile_size);
 
     if(ShowNum)
     {
@@ -38,44 +38,43 @@ void draw_color_tile(wxDC& dc, unsigned color, coord_t at)
 
         if(color == 0x0D)
             text_rgb = RED;
+        else if(((color & 0xF) >= 0xE && color != 0xF) || color == 0x1D)
+            text_rgb = GREY;
+        else if((color & 0xFF) < 0x20 || color == 0x2D)
+            text_rgb = WHITE;
         else
-        {
-            if((color & 0xF) >= 0xE && color != 0xF)
-                text_rgb = GREY;
-            else if(distance(rgb, BLACK) < distance(rgb, WHITE))
-                text_rgb = WHITE;
-            else
-                text_rgb = BLACK;
-        }
+            text_rgb = BLACK;
 
-        dc.SetTextForeground(wxColor(text_rgb.r, text_rgb.g, text_rgb.b));
+        set_font(gc, wxFont(wxFontInfo(4)), wxColour(text_rgb.r, text_rgb.g, text_rgb.b));
+
         wxString string;
         string << int_to_char(color >> 4);
         string << int_to_char(color & 0x0F);
-        dc.DrawText(string, { at.x+4, at.y+5 });
+        gc.DrawText(string, at.x+4, at.y+5);
     }
 }
 
-template void draw_color_tile<true>(wxDC& dc, unsigned color, coord_t at);
-template void draw_color_tile<false>(wxDC& dc, unsigned color, coord_t at);
+template void draw_color_tile<true>(render_t& gc, unsigned color, coord_t at);
+template void draw_color_tile<false>(render_t& gc, unsigned color, coord_t at);
 
 ////////////////////////////////////////////////////////////////////////////////
 // palette_canvas_t ///////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-void palette_canvas_t::draw_tiles(wxDC& dc)
+void palette_canvas_t::draw_tiles(render_t& gc)
 {
-    canvas_box_t::draw_tiles(dc);
+    canvas_box_t::draw_tiles(gc);
 
-    dc.SetPen(wxPen(wxColor(255, 0, 255), 0, wxPENSTYLE_DOT));
-    dc.SetTextForeground(wxColor(0, 0, 0));
+    gc.SetPen(wxPen(wxColor(255, 0, 255), 0, wxPENSTYLE_DOT));
+    set_font(gc, wxFont(wxFontInfo(4)), *wxBLACK);
+
     auto const vline = [&](unsigned x, wxString text, bool line = true, int text_offset = -32)
     {
         unsigned sx = margin().w + x * color_tile_size;
         unsigned sy = margin().h + model.palette.color_layer.num * color_tile_size;
         if(line)
-            dc.DrawLine(sx, margin().h/2, sx, sy + margin().h/2);
-        dc.DrawText(text, { sx + text_offset, margin().h / 2 });
+            draw_line(gc, sx, margin().h/2, sx, sy + margin().h/2);
+        gc.DrawText(text, sx + text_offset, margin().h / 2);
     };
     vline(3,  "BG 0");
     vline(6,  "BG 1");
@@ -91,9 +90,9 @@ void palette_canvas_t::draw_tiles(wxDC& dc)
     {
         wxString string;
         string << i;
-        wxCoord w, h;
-        dc.GetTextExtent(string, &w, &h);
-        dc.DrawText(string, { margin().w - w - 2, margin().h + 5 + i*16 });
+        int w, h;
+        text_extent(gc, string, &w, &h);
+        gc.DrawText(string, margin().w - w - 2, margin().h + 5 + i*16);
     }
 }
 

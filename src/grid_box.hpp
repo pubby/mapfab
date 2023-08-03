@@ -239,8 +239,8 @@ public:
     virtual dimen_t tile_size() const { return { 8, 8 }; }
     virtual dimen_t margin() const { return { 8, 8 }; }
 
-    void OnPaint(wxPaintEvent& event);
-    void OnDraw(wxDC& dc) override;
+    void on_paint(wxPaintEvent& event);
+    virtual void on_draw(render_t& gc) { draw_tiles(gc); }
 
     virtual void grid_resize(dimen_t dimen);
     virtual void resize() = 0;
@@ -258,7 +258,7 @@ protected:
     coord_t mouse_current = {};
     int scale = 2;
 
-    virtual void draw_tiles(wxDC& dc) = 0;
+    virtual void draw_tiles(render_t& gc) = 0;
 
     virtual void on_down(mouse_button_t mb, coord_t) {}
     virtual void on_up(mouse_button_t mb, coord_t) {}
@@ -284,8 +284,6 @@ public:
     : grid_box_t(parent, can_zoom) 
     {}
 
-    void OnDraw(wxDC& dc) override;
-
     virtual tile_model_t& tiles() const = 0;
     auto& layer() const { return tiles().layer(); }
     virtual select_map_t& selector() const { return layer().picker_selector; }
@@ -295,16 +293,19 @@ public:
     virtual dimen_t tile_size() const { return layer().tile_size(); }
 
     virtual bool enable_tile_select() const { return true; }
+
 protected:
 
     coord_t mouse_start = {};
+
+    void on_draw(render_t& gc) override;
 
     virtual void on_down(mouse_button_t mb, coord_t at) override { mouse_start = at; }
     virtual void on_up(mouse_button_t mb, coord_t mouse_end) override;
     virtual void on_motion(coord_t at) override;
 
-    virtual void draw_tile(wxDC& dc, unsigned tile, coord_t at) {}
-    virtual void draw_tiles(wxDC& dc) override;
+    virtual void draw_tile(render_t& gc, unsigned tile, coord_t at) {}
+    virtual void draw_tiles(render_t& gc) override;
 };
 
 class canvas_box_t : public selector_box_t
@@ -315,12 +316,12 @@ public:
     , model(model)
     {}
 
-    void OnDraw(wxDC& dc) override
+    void on_draw(render_t& gc) override
     {
         if(model.tool == TOOL_SELECT && !pasting())
-            selector_box_t::OnDraw(dc);
+            selector_box_t::on_draw(gc);
         else
-            grid_box_t::OnDraw(dc);
+            grid_box_t::on_draw(gc);
     }
 
     virtual void resize() override { grid_resize(layer().canvas_dimen()); }
@@ -339,11 +340,11 @@ protected:
     virtual void on_up(mouse_button_t mb, coord_t mouse_end) override;
     virtual void on_motion(coord_t at) override { Refresh(); }
 
-    virtual void draw_tile(wxDC& dc, unsigned tile, coord_t at) {}
-    virtual void draw_tiles(wxDC& dc) override;
+    virtual void draw_tile(render_t& gc, unsigned tile, coord_t at) {}
+    virtual void draw_tiles(render_t& gc) override;
 
-    void draw_underlays(wxDC& dc);
-    void draw_overlays(wxDC& dc);
+    void draw_underlays(render_t& gc);
+    void draw_overlays(render_t& gc);
 };
 
 class editor_t : public wxPanel
@@ -391,7 +392,7 @@ public:
 
         Bind(wxEVT_MENU, &tab_panel_t::on_close_tab, this, ID_R_CLOSE_TAB);
         Bind(wxEVT_MENU, &tab_panel_t::on_manage, this, ID_R_MANAGE_TABS);
-        Bind(wxEVT_NOTEBOOK_PAGE_CHANGING, &tab_panel_t::on_page_changing, this);
+        Bind(wxEVT_NOTEBOOK_PAGE_CHANGED, &tab_panel_t::on_page_changing, this);
     }
 
     page_type& page(int i) { return *static_cast<page_type*>(notebook->GetPage(i)); }
@@ -417,8 +418,13 @@ public:
         while(notebook->GetPageCount())
             notebook->RemovePage(0);
 
+        unsigned count = 0;
         for(auto const& object : collection())
+        {
             notebook->AddPage(new page_type(notebook, model, object), object->name);
+            if(++count >= 10)
+                break;
+        }
     }
 
     void prepare_page(int i)

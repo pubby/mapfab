@@ -15,7 +15,7 @@ using namespace i2d;
 constexpr unsigned color_tile_size = 16;
 
 template<bool ShowNum>
-void draw_color_tile(wxDC& dc, unsigned color, coord_t at);
+void draw_color_tile(render_t& gc, unsigned color, coord_t at);
 
 class color_picker_t : public selector_box_t
 {
@@ -28,7 +28,7 @@ public:
 protected:
     model_t& model;
 
-    virtual void draw_tile(wxDC& dc, unsigned color, coord_t at) override { draw_color_tile<true>(dc, color, at); }
+    virtual void draw_tile(render_t& gc, unsigned color, coord_t at) override { draw_color_tile<true>(gc, color, at); }
     virtual tile_model_t& tiles() const { return model.palette; }
 };
 
@@ -45,8 +45,8 @@ private:
     virtual tile_model_t& tiles() const { return model.palette; }
     virtual dimen_t margin() const override { return { 16, 16 }; }
     //virtual void post_update() override { model.refresh_chr(); } TODO
-    virtual void draw_tile(wxDC& dc, unsigned color, coord_t at) override { draw_color_tile<false>(dc, color, at); }
-    virtual void draw_tiles(wxDC& dc) override;
+    virtual void draw_tile(render_t& gc, unsigned color, coord_t at) override { draw_color_tile<false>(gc, color, at); }
+    virtual void draw_tiles(render_t& gc) override;
 };
 
 class palette_editor_t : public editor_t

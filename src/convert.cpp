@@ -60,17 +60,26 @@ std::vector<attr_bitmaps_t> chr_to_bitmaps(std::uint8_t const* data, std::size_t
     return ret;
 }
 
-std::vector<wxBitmap> load_collision_file(wxString const& string)
+std::vector<bitmap_t> load_collision_file(wxString const& string)
 {
-    std::vector<wxBitmap> ret;
+    if(string.IsEmpty())
+        return {};
+
+    std::vector<bitmap_t> ret;
     wxImage base(string);
+    if(!base.IsOk())
+        return {};
 
     for(coord_t c : dimen_range({8, 8}))
     {
         wxImage tile = base.Copy();
         //wxImage tile(string);
         tile.Resize({ 16, 16 }, { c.x * -16, c.y * -16 }, 255, 0, 255);
+#ifdef GC_RENDER
+        ret.emplace_back(get_renderer()->CreateBitmapFromImage(tile));
+#else
         ret.emplace_back(tile);
+#endif
     }
 
     return ret;
@@ -181,3 +190,16 @@ fail:
     throw std::runtime_error(std::string("png decoder error: ") + lodepng_error_text(error));
 }
 
+attr_gc_bitmaps_t convert_bitmap(attr_bitmaps_t const& bmp)
+{
+#if GC_RENDER
+    return {
+        get_renderer()->CreateBitmap(bmp[0]),
+        get_renderer()->CreateBitmap(bmp[1]),
+        get_renderer()->CreateBitmap(bmp[2]),
+        get_renderer()->CreateBitmap(bmp[3]),
+    };
+#else
+    return bmp;
+#endif
+}

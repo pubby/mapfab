@@ -24,39 +24,37 @@ grid_box_t::grid_box_t(wxWindow* parent, bool can_zoom)
 
     Bind(wxEVT_UPDATE_UI, &grid_box_t::on_update, this);
 
-    Connect(wxEVT_PAINT, wxPaintEventHandler(grid_box_t::OnPaint), 0, this);
+    Connect(wxEVT_PAINT, wxPaintEventHandler(grid_box_t::on_paint), 0, this);
     SetBackgroundStyle(wxBG_STYLE_PAINT);
 }
 
-void grid_box_t::OnPaint(wxPaintEvent& event)
+void grid_box_t::on_paint(wxPaintEvent& event)
 {
+#if GC_RENDER
     wxPaintDC dc(this);
-    wxGCDC gdc(dc);
+    dc.Clear();
+
 #ifdef __WXMSW__
     wxGraphicsRenderer* renderer = wxGraphicsRenderer::GetDirect2DRenderer();
 #else
-    wxGraphicsRenderer* renderer = wxGraphicsRenderer::GetDefaultRenderer();
+    wxGraphicsRenderer* renderer = wxGraphicsRenderer::GetCairoRenderer();
 #endif
+
     std::unique_ptr<wxGraphicsContext> gc(renderer->CreateContext(dc));
     if(gc)
     {
-        gdc.SetGraphicsContext(gc.get());
-
         gc->SetInterpolationQuality(wxINTERPOLATION_NONE);
         gc->SetAntialiasMode(wxANTIALIAS_NONE);
-
-        gdc.Clear();
-        DoPrepareDC(gdc);
-        OnDraw(gdc);
+        gc->Translate(-GetViewStart().x, -GetViewStart().y);
+        gc->Scale(scale, scale);
+        on_draw(*gc);
     }
-    gc.release();
-}
-
-void grid_box_t::OnDraw(wxDC& dc)
-{
-    dc.SetFont(wxFont(wxFontInfo(4)));
+#else
+    wxPaintDC dc(this);
+    PrepareDC(dc);
     dc.SetUserScale(scale, scale);
-    draw_tiles(dc);
+    on_draw(dc);
+#endif
 }
 
 void grid_box_t::grid_resize(dimen_t dimen)
@@ -199,24 +197,24 @@ editor_t& selector_box_t::editor()
     return static_cast<editor_t&>(*GetParent()); 
 }
 
-void selector_box_t::OnDraw(wxDC& dc)
+void selector_box_t::on_draw(render_t& gc)
 {
-    grid_box_t::OnDraw(dc);
+    grid_box_t::on_draw(gc);
 
     if(!enable_tile_select())
         return;
 
     if(mouse_down)
     {
-        dc.SetPen(wxPen(wxColor(255, 255, 255, 127), 0));
+        gc.SetPen(wxPen(wxColor(255, 255, 255, 127), 0));
         if(mouse_down == MBTN_LEFT)
-            dc.SetBrush(wxBrush(wxColor(255, 255, 0, 127)));
+            gc.SetBrush(wxBrush(wxColor(255, 255, 0, 127)));
         else
-            dc.SetBrush(wxBrush(wxColor(255, 0, 0, 127)));
+            gc.SetBrush(wxBrush(wxColor(255, 0, 0, 127)));
         rect_t const r = rect_from_2_coords(from_screen(mouse_start), from_screen(mouse_current));
         coord_t const c0 = to_screen(r.c);
         coord_t const c1 = to_screen(r.e());
-        dc.DrawRectangle(c0.x, c0.y, (c1 - c0).x, (c1 - c0).y);
+        gc.DrawRectangle(c0.x, c0.y, (c1 - c0).x, (c1 - c0).y);
     }
 }
 
@@ -243,9 +241,9 @@ void selector_box_t::on_motion(coord_t at)
         Refresh();
 }
 
-void selector_box_t::draw_tiles(wxDC& dc)
+void selector_box_t::draw_tiles(render_t& gc)
 {
-    dc.SetUserScale(scale, scale);
+    //dc.SetUserScale(scale, scale);
 
     if(!enable_tile_select())
         return;
@@ -256,12 +254,18 @@ void selector_box_t::draw_tiles(wxDC& dc)
         int y0 = c.y * tile_size().h + margin().h;
 
         unsigned const tile = tiles().layer().to_tile(c);
-        draw_tile(dc, tile, { x0, y0 });
+        draw_tile(gc, tile, { x0, y0 });
+    }
 
-        dc.SetPen(wxPen(wxColor(255, 255, 255, 127), 0));
-        dc.SetBrush(wxBrush(wxColor(0, 255, 255, 127)));
+    gc.SetPen(wxPen(wxColor(255, 255, 255, 127), 0));
+    gc.SetBrush(wxBrush(wxColor(0, 255, 255, 127)));
+
+    for(coord_t c : dimen_range(selector().dimen()))
+    {
+        int x0 = c.x * tile_size().w + margin().w;
+        int y0 = c.y * tile_size().h + margin().h;
         if(selector()[c])
-            dc.DrawRectangle(x0, y0, tile_size().w, tile_size().h);
+            gc.DrawRectangle(x0, y0, tile_size().w, tile_size().h);
     }
 }
 
@@ -294,8 +298,7 @@ void canvas_box_t::on_up(mouse_button_t mb, coord_t mouse_end)
         {
             model.modify();
 
-            //history.push(make_undo({ pen, picker().select_rect().d }));
-
+            editor().history.push(layer().save(pen));
             layer().paste(*model.paste, pen);
             post_update();
         done_paste:
@@ -336,13 +339,13 @@ void canvas_box_t::on_up(mouse_button_t mb, coord_t mouse_end)
     Refresh();
 }
 
-void canvas_box_t::draw_tiles(wxDC& dc)
+void canvas_box_t::draw_tiles(render_t& gc)
 {
-    draw_underlays(dc);
-    draw_overlays(dc);
+    draw_underlays(gc);
+    draw_overlays(gc);
 }
 
-void canvas_box_t::draw_underlays(wxDC& dc)
+void canvas_box_t::draw_underlays(render_t& gc)
 {
     for(coord_t c : dimen_range(layer().canvas_dimen()))
     {
@@ -350,11 +353,11 @@ void canvas_box_t::draw_underlays(wxDC& dc)
         int y0 = c.y * tile_size().h + margin().h;
 
         unsigned const tile = layer().get(c);
-        draw_tile(dc, tile, { x0, y0 });
+        draw_tile(gc, tile, { x0, y0 });
     }
 }
 
-void canvas_box_t::draw_overlays(wxDC& dc)
+void canvas_box_t::draw_overlays(render_t& gc)
 {
     if(!enable_tile_select())
         return;
@@ -368,9 +371,9 @@ void canvas_box_t::draw_overlays(wxDC& dc)
 
             if(model.tool == TOOL_SELECT && layer().canvas_selector[c])
             {
-                dc.SetPen(wxPen(wxColor(255, 255, 255, 127), 0));
-                dc.SetBrush(wxBrush(wxColor(0, 255, 255, 127)));
-                dc.DrawRectangle(x0, y0, tile_size().w, tile_size().h);
+                gc.SetPen(wxPen(wxColor(255, 255, 255, 127), 0));
+                gc.SetBrush(wxBrush(wxColor(0, 255, 255, 127)));
+                gc.DrawRectangle(x0, y0, tile_size().w, tile_size().h);
             }
         }
     }
@@ -379,27 +382,27 @@ void canvas_box_t::draw_overlays(wxDC& dc)
     {
         if(auto* grid = std::get_if<grid_t<std::uint16_t>>(&model.paste->data))
         {
-            dc.SetPen(wxPen(wxColor(255, 255, 0), 0));
-            dc.SetBrush(wxBrush(wxColor(255, 0, 255, 127)));
+            gc.SetPen(wxPen(wxColor(255, 255, 0), 0));
+            gc.SetBrush(wxBrush(wxColor(255, 0, 255, 127)));
             coord_t const pen = from_screen(mouse_current);
             for(coord_t c : dimen_range(grid->dimen()))
             {
-                if(~(*grid)[c])
+                if((*grid)[c] != std::uint16_t(~0u))
                 {
                     coord_t const c0 = to_screen(c + pen);
-                    dc.DrawRectangle(c0.x, c0.y, tile_size().w, tile_size().h);
+                    gc.DrawRectangle(c0.x, c0.y, tile_size().w, tile_size().h);
                 }
             }
         }
     }
     else if(model.tool == TOOL_STAMP)
     {
-        dc.SetPen(wxPen(wxColor(255, 255, 255, 127), 0));
-        dc.SetBrush(wxBrush(wxColor(0, 255, 255, mouse_down == MBTN_LEFT ? 127 : 31)));
+        gc.SetPen(wxPen(wxColor(255, 255, 255, 127), 0));
+        gc.SetBrush(wxBrush(wxColor(0, 255, 255, mouse_down == MBTN_LEFT ? 127 : 31)));
         layer().for_each_picked(from_screen(mouse_current), [&](coord_t c, std::uint8_t tile)
         {
             coord_t const c0 = to_screen(c);
-            dc.DrawRectangle(c0.x, c0.y, tile_size().w, tile_size().h);
+            gc.DrawRectangle(c0.x, c0.y, tile_size().w, tile_size().h);
         });
     }
 }

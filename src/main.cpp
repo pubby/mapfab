@@ -150,7 +150,6 @@ private:
         default:
             manage->Enable(false);
             break;
-        case TAB_PALETTE:
         case TAB_METATILES:
         case TAB_LEVELS:
             manage->Enable(true);
@@ -166,14 +165,15 @@ private:
 
     void on_watcher(wxFileSystemWatcherEvent& event)
     {
-        wxFileName path = event.GetPath();
-
-        // Ignore all watch events for folders.
-        if(path.IsDir() || path.GetSize() == 0)
-            return;
+        //wxFileName path = event.GetPath();
 
         if(event.GetChangeType() == wxFSW_EVENT_MODIFY)
+        {
+            model.collision_bitmaps = load_collision_file(model.collision_path.string());
+            for(auto& chr : model.chr_files)
+                chr.load();
             refresh_tab();
+        }
     }
 
     void reset_watcher()
@@ -185,10 +185,18 @@ private:
         }
 
         watcher->RemoveAll();
-        watcher->Add(wxString(model.collision_path.string()));
 
+        auto const watch = [&](std::filesystem::path path)
+        {
+#ifdef __WXMSW__
+            path.remove_filename();
+#endif
+            watcher->Add(wxString(path.string()));
+        };
+
+        watch(model.collision_path);
         for(auto const& chr : model.chr_files)
-            watcher->Add(wxString(chr.path.string()));
+            watch(chr.path.string());
     }
 
     template<tool_t T>
@@ -460,8 +468,9 @@ frame_t::frame_t()
     Bind(wxEVT_TOOL, &frame_t::on_tool<TOOL_SELECT>, this, ID_TOOL_SELECT);
 
     Bind(wxEVT_CLOSE_WINDOW, &frame_t::on_close, this);
+    Bind(wxEVT_FSWATCHER, &frame_t::on_watcher, this);
 
-    notebook->Bind(wxEVT_NOTEBOOK_PAGE_CHANGING, &frame_t::on_tab_change, this);
+    notebook->Bind(wxEVT_NOTEBOOK_PAGE_CHANGED, &frame_t::on_tab_change, this);
 
 
     Bind(wxEVT_UPDATE_UI, &frame_t::update_ui, this);
@@ -545,6 +554,7 @@ void frame_t::on_open(wxCommandEvent& event)
         frame->chr_editor->load();
         frame->metatile_panel->load_pages();
         frame->levels_panel->load_pages();
+        frame->class_panel->load_pages();
         frame->reset_watcher();
         frame->Update();
 
@@ -619,6 +629,8 @@ void frame_t::refresh_title()
 
 void frame_t::on_tab_change(wxNotebookEvent& event)
 {
+    if(event.GetOldSelection() == TAB_CHR)
+        reset_watcher();
     refresh_tab(event.GetSelection());
 }
 

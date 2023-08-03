@@ -338,7 +338,7 @@ public:
     std::uint16_t num = 1;
     std::uint8_t active = 0;
     std::uint8_t palette = 0;
-    std::vector<attr_bitmaps_t> chr_bitmaps;
+    std::vector<attr_gc_bitmaps_t> chr_bitmaps;
 
     chr_layer_t chr_layer = chr_layer_t(this->active);
     collision_layer_t collision_layer;
@@ -402,7 +402,7 @@ public:
     std::string chr_name;
     std::uint8_t palette = 0;
     metatile_layer_t metatile_layer;
-    std::vector<wxBitmap> metatile_bitmaps;
+    std::vector<bitmap_t> metatile_bitmaps;
     level_layer_t current_layer = TILE_LAYER;
 
     std::set<int> object_selector;
@@ -442,7 +442,7 @@ struct model_t
     std::deque<chr_file_t> chr_files;
 
     std::filesystem::path collision_path;
-    std::vector<wxBitmap> collision_bitmaps;
+    std::vector<bitmap_t> collision_bitmaps;
 
     palette_array_t palette_array(unsigned palette_index = 0);
 

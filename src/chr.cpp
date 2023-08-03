@@ -187,7 +187,7 @@ void chr_editor_t::on_delete(unsigned index)
         model.chr_files.erase(model.chr_files.begin() + index); 
         for(unsigned i = 0; i < file_defs.size(); ++i)
             file_defs[i]->index = i;
-        Fit();
+        FitInside();
         model.modify();
     }
 }
@@ -213,7 +213,7 @@ void chr_editor_t::on_new(wxCommandEvent& event)
         auto& file = model.chr_files.emplace_back();
         file.name = new_name;
         new_file(file);
-        Fit();
+        FitInside();
         model.modify();
     }
 }
@@ -265,5 +265,5 @@ void chr_editor_t::load()
 
     collision_filename->SetValue(model.collision_path.string());
 
-    Fit();
+    FitInside();
 }

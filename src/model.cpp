@@ -2,6 +2,8 @@
 
 #include <ranges>
 
+#include "graphics.hpp"
+
 ////////////////////////////////////////////////////////////////////////////////
 // object_t ////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -162,7 +164,7 @@ void tile_layer_t::paste(tile_copy_t const& copy, coord_t at)
 {
     if(auto* grid = std::get_if<grid_t<std::uint16_t>>(&copy.data))
         for(coord_t c : dimen_range(grid->dimen()))
-            if(~(*grid)[c] && in_bounds(at + c, canvas_dimen()))
+            if((*grid)[c] != std::uint16_t(~0u) && in_bounds(at + c, canvas_dimen()))
                 set(at + c, (*grid)[c]);
 }
 
@@ -263,7 +265,11 @@ void metatile_model_t::clear_chr()
 
 void metatile_model_t::refresh_chr(chr_array_t const& chr, palette_array_t const& palette)
 {
-    chr_bitmaps = chr_to_bitmaps(chr.data(), chr.size(), palette.data());
+    auto bmp = chr_to_bitmaps(chr.data(), chr.size(), palette.data());
+    chr_bitmaps.clear();
+    chr_bitmaps.reserve(bmp.size());
+    for(unsigned i = 0; i < bmp.size(); ++i)
+        chr_bitmaps.push_back(convert_bitmap(bmp[i]));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -310,7 +316,11 @@ void level_model_t::refresh_metatiles(metatile_model_t const& metatiles, chr_arr
             }
         }
 
+#ifdef GC_RENDER
+        metatile_bitmaps.push_back(get_renderer()->CreateBitmap(std::move(bitmap)));
+#else
         metatile_bitmaps.push_back(std::move(bitmap));
+#endif
         ++i;
     }
 }
@@ -434,14 +444,14 @@ void model_t::write_file(FILE* fp, std::filesystem::path base_path) const
     write8(SAVE_VERSION);
 
     // Collision file:
-    write_str(std::filesystem::proximate(collision_path, base_path).string());
+    write_str(std::filesystem::proximate(collision_path, base_path).generic_string());
 
     // CHR:
     write8(chr_files.size() & 0xFF);
     for(auto const& file : chr_files)
     {
         write_str(file.name);
-        write_str(std::filesystem::proximate(file.path, base_path).string());
+        write_str(std::filesystem::proximate(file.path, base_path).generic_string());
     }
 
     // Palettes:
@@ -553,7 +563,8 @@ void model_t::read_file(FILE* fp, std::filesystem::path base_path)
 
     auto const get_path = [&]() -> std::filesystem::path
     {
-        std::filesystem::path path = get_str();
+        std::filesystem::path path(get_str(), std::filesystem::path::generic_format);
+        path.make_preferred();
 
         if(!path.empty() && path.is_relative())
             path = base_path / path;
@@ -571,6 +582,7 @@ void model_t::read_file(FILE* fp, std::filesystem::path base_path)
 
     // Collision file:
     collision_path = get_path();
+    collision_bitmaps = load_collision_file(collision_path.string());
 
     // CHR:
     unsigned const num_chr = get8(true);
@@ -693,6 +705,9 @@ void chr_file_t::load()
     if(path.empty())
         return;
     std::vector<std::uint8_t> data = read_binary_file(path.string().c_str());
+
+    if(data.empty())
+        return;
 
     std::string ext = path.extension().string();
     for(char& c : ext)

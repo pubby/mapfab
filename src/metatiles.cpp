@@ -2,33 +2,41 @@
 
 #include "id.hpp"
 
-void draw_chr_tile(metatile_model_t const& model, wxDC& dc, std::uint8_t tile, std::uint8_t attribute, coord_t at)
+void draw_chr_tile(metatile_model_t const& model, render_t& gc, std::uint8_t tile, std::uint8_t attribute, coord_t at)
 {
     if(tile < model.chr_bitmaps.size())
-        dc.DrawBitmap(model.chr_bitmaps[tile][attribute], { at.x, at.y }, false);
+#if GC_RENDER
+        gc.DrawBitmap(model.chr_bitmaps[tile][attribute], at.x, at.y, 8, 8);
+#else
+        gc.DrawBitmap(model.chr_bitmaps[tile][attribute], { at.x, at.y });
+#endif
 }
 
-void draw_collision_tile(model_t const& model, wxDC& dc, std::uint8_t tile, coord_t at)
+void draw_collision_tile(model_t const& model, render_t& gc, std::uint8_t tile, coord_t at)
 {
     if(tile < model.collision_bitmaps.size())
-        dc.DrawBitmap(model.collision_bitmaps[tile], { at.x, at.y }, false);
+#if GC_RENDER
+        gc.DrawBitmap(model.collision_bitmaps[tile], at.x, at.y, 16, 16);
+#else
+        gc.DrawBitmap(model.collision_bitmaps[tile], { at.x, at.y });
+#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // chr_picker_t ////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-void chr_picker_t::draw_tile(wxDC& dc, unsigned tile, coord_t at)
+void chr_picker_t::draw_tile(render_t& gc, unsigned tile, coord_t at)
 { 
     if(metatiles->collisions())
     {
-        dc.SetPen(wxPen());
-        dc.SetBrush(wxBrush(wxColor(230, 140, 230)));
-        dc.DrawRectangle(at.x, at.y, tile_size().w, tile_size().h);
-        draw_collision_tile(model, dc, tile, at);
+        gc.SetPen(wxPen());
+        gc.SetBrush(wxBrush(wxColor(230, 140, 230)));
+        gc.DrawRectangle(at.x, at.y, tile_size().w, tile_size().h);
+        draw_collision_tile(model, gc, tile, at);
     }
     else
-        draw_chr_tile(*metatiles, dc, tile, metatiles->active, at); 
+        draw_chr_tile(*metatiles, gc, tile, metatiles->active, at); 
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -40,7 +48,7 @@ metatile_canvas_t::metatile_canvas_t(wxWindow* parent, model_t& model, std::shar
 , metatiles(std::move(metatiles))
 { resize(); }
 
-void metatile_canvas_t::draw_tiles(wxDC& dc) 
+void metatile_canvas_t::draw_tiles(render_t& gc) 
 {
     for(coord_t c : dimen_range(metatiles->chr_layer.tiles.dimen()))
     {
@@ -49,7 +57,7 @@ void metatile_canvas_t::draw_tiles(wxDC& dc)
 
         unsigned const tile = metatiles->chr_layer.tiles.at(c);
         unsigned const attribute = metatiles->chr_layer.attributes.at(vec_div(c, 2));
-        draw_chr_tile(*metatiles, dc, tile, attribute, { x0, y0 });
+        draw_chr_tile(*metatiles, gc, tile, attribute, { x0, y0 });
     }
 
     unsigned num = 0;
@@ -61,25 +69,25 @@ void metatile_canvas_t::draw_tiles(wxDC& dc)
         if(metatiles->collisions())
         {
             unsigned const tile = metatiles->collision_layer.tiles.at(c);
-            draw_collision_tile(model, dc, tile, { x0, y0 });
+            draw_collision_tile(model, gc, tile, { x0, y0 });
         }
 
-        dc.SetPen(wxPen(wxColor(255, 0, 255), 0, wxPENSTYLE_DOT));
-        dc.SetBrush(wxBrush());
-        dc.DrawRectangle(x0, y0, 16, 16);
+        gc.SetPen(wxPen(wxColor(255, 0, 255), 0, wxPENSTYLE_DOT));
+        gc.SetBrush(wxBrush());
+        gc.DrawRectangle(x0, y0, 16, 16);
 
         if(num >= metatiles->num)
         {
-            dc.SetPen(wxPen(wxColor(255, 0, 0), 2, wxPENSTYLE_SOLID));
-            dc.DrawLine(x0 + 2, y0 + 2, x0 + 14, y0 + 14);
-            dc.SetPen(wxPen(wxColor(0, 0, 255), 2, wxPENSTYLE_SOLID));
-            dc.DrawLine(x0 + 14, y0 + 2, x0 + 2, y0 + 14);
+            gc.SetPen(wxPen(wxColor(255, 0, 0), 2, wxPENSTYLE_SOLID));
+            draw_line(gc, x0 + 2, y0 + 2, x0 + 14, y0 + 14);
+            gc.SetPen(wxPen(wxColor(0, 0, 255), 2, wxPENSTYLE_SOLID));
+            draw_line(gc, x0 + 14, y0 + 2, x0 + 2, y0 + 14);
         }
 
         ++num;
     }
 
-    draw_overlays(dc);
+    draw_overlays(gc);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -109,6 +117,7 @@ metatile_editor_t::metatile_editor_t(wxWindow* parent, model_t& model, std::shar
 
     auto* chr_label = new wxStaticText(left_panel, wxID_ANY, "Display CHR");
     chr_combo = new wxComboBox(left_panel, wxID_ANY);
+    chr_combo->SetMinSize(wxSize(200, -1));
 
     auto* palette_text = new wxStaticText(left_panel, wxID_ANY, "Display Palette");
     palette_ctrl = new wxSpinCtrl(left_panel);
@@ -178,6 +187,9 @@ void metatile_editor_t::on_update()
 { 
     if(last_palette != metatiles->palette) 
         palette_ctrl->SetValue(last_palette = metatiles->palette); 
+
+    if(last_num != metatiles->num) 
+        num_ctrl->SetValue(last_num = metatiles->num); 
 }
 
 void metatile_editor_t::on_radio(wxCommandEvent& event)

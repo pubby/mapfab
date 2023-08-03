@@ -13,8 +13,8 @@
 
 using namespace i2d;
 
-void draw_chr_tile(metatile_model_t const& model, wxDC& dc, std::uint8_t tile, std::uint8_t attribute, coord_t at);
-void draw_collision_tile(model_t const& model, wxDC& dc, std::uint8_t tile, coord_t at);
+void draw_chr_tile(metatile_model_t const& model, render_t& gc, std::uint8_t tile, std::uint8_t attribute, coord_t at);
+void draw_collision_tile(model_t const& model, render_t& gc, std::uint8_t tile, coord_t at);
 
 class chr_picker_t : public selector_box_t
 {
@@ -30,7 +30,7 @@ private:
     std::shared_ptr<metatile_model_t> metatiles;
 
     virtual tile_model_t& tiles() const override { return *metatiles; }
-    virtual void draw_tile(wxDC& dc, unsigned tile, coord_t at) override;
+    virtual void draw_tile(render_t& gc, unsigned tile, coord_t at) override;
 };
 
 
@@ -47,7 +47,7 @@ private:
     virtual dimen_t margin() const override { return { 16, 16 }; }
     virtual void post_update() override { } // TODO
 
-    virtual void draw_tiles(wxDC& dc) override;
+    virtual void draw_tiles(render_t& gc) override;
 };
 
 class metatile_editor_t : public editor_t
@@ -72,6 +72,7 @@ private:
     wxSpinCtrl* num_ctrl;
     std::array<wxRadioButton*, 5> attributes;
     int last_palette = -1;
+    int last_num = -1;
 
     void on_change_palette(wxSpinEvent& event);
     void on_radio(wxCommandEvent& event);

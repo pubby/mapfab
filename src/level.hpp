@@ -18,7 +18,7 @@
 
 using namespace i2d;
 
-void draw_metatile(level_model_t const& model, wxDC& dc, std::uint8_t tile, coord_t at);
+void draw_metatile(level_model_t const& model, render_t& gc, std::uint8_t tile, coord_t at);
 
 class object_field_t : public wxPanel
 {
@@ -84,11 +84,11 @@ private:
 
     virtual tile_model_t& tiles() const override { return *level; }
 
-    virtual void draw_tile(wxDC& dc, unsigned tile, coord_t at) override 
+    virtual void draw_tile(render_t& gc, unsigned tile, coord_t at) override 
     { 
-        draw_metatile(*level, dc, tile, at); 
+        draw_metatile(*level, gc, tile, at); 
     }
-    virtual void draw_tiles(wxDC& dc) override;
+    virtual void draw_tiles(render_t& gc) override;
 };
 
 
@@ -100,11 +100,11 @@ public:
     , level(level)
     { resize(); }
 
-    virtual void draw_tile(wxDC& dc, unsigned tile, coord_t at) override 
+    virtual void draw_tile(render_t& gc, unsigned tile, coord_t at) override 
     { 
-        draw_metatile(*level, dc, tile, at); 
+        draw_metatile(*level, gc, tile, at); 
     }
-    virtual void draw_tiles(wxDC& dc) override;
+    virtual void draw_tiles(render_t& gc) override;
 
     coord_t crop(coord_t at)
     {

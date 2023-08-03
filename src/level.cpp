@@ -2,10 +2,14 @@
 
 #include <ranges>
 
-void draw_metatile(level_model_t const& model, wxDC& dc, std::uint8_t tile, coord_t at)
+void draw_metatile(level_model_t const& model, render_t& gc, std::uint8_t tile, coord_t at)
 {
     if(tile < model.metatile_bitmaps.size())
-        dc.DrawBitmap(model.metatile_bitmaps[tile], { at.x, at.y }, false);
+#ifdef GC_RENDER
+        gc.DrawBitmap(model.metatile_bitmaps[tile], at.x, at.y, 16, 16);
+#else 
+        gc.DrawBitmap(model.metatile_bitmaps[tile], { at.x, at.y });
+#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -253,24 +257,24 @@ void object_dialog_t::on_reset(wxCommandEvent& event)
 // metatile_picker_t //////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-void metatile_picker_t::draw_tiles(wxDC& dc)
+void metatile_picker_t::draw_tiles(render_t& gc)
 {
-    selector_box_t::draw_tiles(dc);
+    selector_box_t::draw_tiles(gc);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // level_canvas_t //////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-void level_canvas_t::draw_tiles(wxDC& dc)
+void level_canvas_t::draw_tiles(render_t& gc)
 {
     bool const object_select = 
         selecting_objects && mouse_down && model.tool == TOOL_SELECT && level->current_layer == OBJECT_LAYER;
 
-    canvas_box_t::draw_tiles(dc);
+    canvas_box_t::draw_tiles(gc);
 
-    dc.SetPen(wxPen(wxColor(255, 0, 255), 0, wxPENSTYLE_DOT));
-    dc.SetBrush(wxBrush());
+    gc.SetPen(wxPen(wxColor(255, 0, 255), 0, wxPENSTYLE_DOT));
+    gc.SetBrush(wxBrush());
 
     int const x0 = margin().w;
     int const x1 = margin().w + level->metatile_layer.tiles.dimen().w * 16;
@@ -286,7 +290,7 @@ void level_canvas_t::draw_tiles(wxDC& dc)
     for(unsigned x = 1; x < (level->metatile_layer.tiles.dimen().w + 15) / 16; ++x)
     {
         int const x0 = x * 256 + margin().w;
-        dc.DrawLine(x0, y0, x0, y1);
+        draw_line(gc, x0, y0, x0, y1);
     }
 
     if(y_lines)
@@ -295,12 +299,16 @@ void level_canvas_t::draw_tiles(wxDC& dc)
         for(unsigned y = 1; y < y_limit; ++y)
         {
             int const y0 = y * (16 * y_lines) + margin().h;
-            dc.DrawLine(x0, y0, x1, y0);
+            draw_line(gc, x0, y0, x1, y0);
         }
     }
 
     // Objects:
-    dc.SetLogicalScale(1.0f / scale, 1.0f / scale);
+#ifdef GC_RENDER
+    gc.Scale(1.0f / scale, 1.0f / scale);
+#else
+    gc.SetLogicalScale(1.0f / scale, 1.0f / scale);
+#endif
 
     for(unsigned i = 0; i < level->objects.size(); ++i)
     {
@@ -309,15 +317,15 @@ void level_canvas_t::draw_tiles(wxDC& dc)
 
         if(level->object_selector.count(i))
         {
-            dc.SetPen(wxPen());
-            dc.SetBrush(wxBrush(wxColor(255, 255, 255, 128)));
+            gc.SetPen(wxPen());
+            gc.SetBrush(wxBrush(wxColor(255, 255, 255, 128)));
         }
         else
         {
-            dc.SetPen(wxPen());
-            dc.SetBrush(wxBrush(wxColor(255, 255, 255, 32)));
+            gc.SetPen(wxPen());
+            gc.SetBrush(wxBrush(wxColor(255, 255, 255, 32)));
         }
-        dc.DrawCircle(at.x, at.y, object_radius() * 3 / 2);
+        draw_circle(gc, at.x, at.y, object_radius() * 3 / 2);
     }
 
     for(unsigned i = 0; i < level->objects.size(); ++i)
@@ -341,18 +349,18 @@ void level_canvas_t::draw_tiles(wxDC& dc)
 
         if(level->object_selector.count(i))
         {
-            dc.SetPen(wxPen(wxColor(color.r, color.g, color.b), 0, style));
-            dc.SetBrush(wxBrush(wxColor(color.r, color.g, color.b, 127)));
+            gc.SetPen(wxPen(wxColor(color.r, color.g, color.b), 0, style));
+            gc.SetBrush(wxBrush(wxColor(color.r, color.g, color.b, 127)));
         }
         else
         {
-            dc.SetPen(wxPen(wxColor(color.r, color.g, color.b, 200), 0, style));
-            dc.SetBrush(wxBrush(wxColor(color.r, color.g, color.b, 60)));
+            gc.SetPen(wxPen(wxColor(color.r, color.g, color.b, 200), 0, style));
+            gc.SetBrush(wxBrush(wxColor(color.r, color.g, color.b, 60)));
         }
 
         coord_t const at = vec_mul(crop(object.position) + to_coord(margin()), scale);
-        dc.DrawCircle(at.x, at.y, object_radius());
-        dc.DrawPoint(at.x, at.y);
+        draw_circle(gc, at.x, at.y, object_radius());
+        draw_point(gc, at.x, at.y);
     }
 
     if(level->current_layer == OBJECT_LAYER)
@@ -361,8 +369,8 @@ void level_canvas_t::draw_tiles(wxDC& dc)
         {
             if(auto const* objects = std::get_if<std::vector<object_t>>(&model.paste->data))
             {
-                dc.SetPen(wxPen(wxColor(255, 0, 255, 200), 0, wxPENSTYLE_SOLID));
-                dc.SetBrush(wxBrush(wxColor(255, 255, 0, 127)));
+                gc.SetPen(wxPen(wxColor(255, 0, 255, 200), 0, wxPENSTYLE_SOLID));
+                gc.SetBrush(wxBrush(wxColor(255, 255, 0, 127)));
 
                 for(auto const& object : *objects)
                 {
@@ -372,14 +380,18 @@ void level_canvas_t::draw_tiles(wxDC& dc)
                     position.y += margin().h;
                     position = vec_mul(position, scale);
 
-                    dc.DrawCircle(position.x, position.y, object_radius());
-                    dc.DrawPoint(position.x, position.y);
+                    draw_circle(gc, position.x, position.y, object_radius());
+                    draw_point(gc, position.x, position.y);
                 }
             }
         }
     }
 
-    dc.SetLogicalScale(1.0f, 1.0f);
+#ifdef GC_RENDER
+    gc.Scale(scale, scale);
+#else
+    gc.SetLogicalScale(1.0f, 1.0f);
+#endif
 
     if(object_select)
     {
@@ -387,14 +399,13 @@ void level_canvas_t::draw_tiles(wxDC& dc)
         coord_t const c0 = to_screen(r.c, {1,1});
         coord_t const c1 = to_screen(r.e(), {1,1});
 
-        dc.SetPen(wxPen(wxColor(255, 255, 255, 127), 0));
+        gc.SetPen(wxPen(wxColor(255, 255, 255, 127), 0));
         if(mouse_down == MBTN_LEFT)
-            dc.SetBrush(wxBrush(wxColor(0, 255, 255, 127)));
+            gc.SetBrush(wxBrush(wxColor(0, 255, 255, 127)));
         else
-            dc.SetBrush(wxBrush(wxColor(255, 0, 0, 127)));
-        dc.DrawRectangle(c0.x, c0.y, (c1 - c0).x, (c1 - c0).y);
+            gc.SetBrush(wxBrush(wxColor(255, 0, 0, 127)));
+        gc.DrawRectangle(c0.x, c0.y, (c1 - c0).x, (c1 - c0).y);
     }
-
 }
 
 void level_canvas_t::on_down(mouse_button_t mb, coord_t at)
@@ -636,12 +647,15 @@ level_editor_t::level_editor_t(wxWindow* parent, model_t& model, std::shared_ptr
     auto* macro_label = new wxStaticText(left_panel, wxID_ANY, "Macro");
     macro_ctrl = new wxTextCtrl(left_panel, wxID_ANY);
     macro_ctrl->SetValue(level->macro_name);
+    macro_ctrl->SetMinSize(wxSize(200, -1));
 
     auto* metatiles_label = new wxStaticText(left_panel, wxID_ANY, "Metatiles");
     metatiles_combo = new wxComboBox(left_panel, wxID_ANY);
+    metatiles_combo->SetMinSize(wxSize(200, -1));
 
     auto* chr_label = new wxStaticText(left_panel, wxID_ANY, "CHR");
     chr_combo = new wxComboBox(left_panel, wxID_ANY);
+    chr_combo->SetMinSize(wxSize(200, -1));
 
     auto* palette_text = new wxStaticText(left_panel, wxID_ANY, "Palette");
     palette_ctrl = new wxSpinCtrl(left_panel);

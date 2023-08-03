@@ -50,6 +50,8 @@ public:
     void on_rename(unsigned index, std::string str);
     void on_color(wxColourPickerEvent& event);
 
+    void load();
+
 private:
     void new_field(class_field_t const& field);
 
