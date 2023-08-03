@@ -1,6 +1,7 @@
 .PHONY: all debug release cleandeps clean run
 debug: mapfab
 release: mapfab
+static: mapfab
 all: mapfab
 run: mapfab
 	./mapfab

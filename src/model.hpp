@@ -8,8 +8,7 @@
 #include <variant>
 #include <set>
 #include <filesystem>
-
-#include <boost/container/small_vector.hpp>
+#include <vector>
 
 #include "2d/geometry.hpp"
 #include "2d/grid.hpp"
@@ -49,7 +48,7 @@ struct undo_tiles_t
 {
     tile_layer_t* layer;
     rect_t rect;
-    bc::small_vector<std::uint16_t, 4> tiles;
+    std::vector<std::uint16_t> tiles;
 };
 
 struct undo_palette_num_t
