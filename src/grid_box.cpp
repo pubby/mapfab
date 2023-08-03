@@ -2,6 +2,7 @@
 
 #include <wx/dcbuffer.h>
 #include <wx/graphics.h>
+#include <wx/dcgraph.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 // grid_box_t //////////////////////////////////////////////////////////////////
@@ -29,18 +30,32 @@ grid_box_t::grid_box_t(wxWindow* parent, bool can_zoom)
 
 void grid_box_t::OnPaint(wxPaintEvent& event)
 {
-    wxAutoBufferedPaintDC dc(this);
+    wxPaintDC dc(this);
+    //wxGCDC gdc(dc);
 #ifdef __WXMSW__
     wxGraphicsRenderer* renderer = wxGraphicsRenderer::GetDirect2DRenderer();
 #else
     wxGraphicsRenderer* renderer = wxGraphicsRenderer::GetDefaultRenderer();
 #endif
-    wxGraphicsContext* gc(renderer->CreateContext(dc));
-    gc->SetInterpolationQuality(wxINTERPOLATION_NONE);
-    gc->SetAntialiasMode(wxANTIALIAS_NONE);
-    dc.SetGraphicsContext(gc);
-    DoPrepareDC(dc);
-    OnDraw(dc);
+    std::unique_ptr<wxGraphicsContext> gc(renderer->CreateContext(dc));
+    if(gc)
+    {
+        //dc.SetGraphicsContext(gc);
+
+        gc->SetInterpolationQuality(wxINTERPOLATION_NONE);
+        gc->SetAntialiasMode(wxANTIALIAS_NONE);
+
+        auto bmp = gc->CreateBitmap(wxBitmap(16, 16));
+
+        dc.Clear();
+        DoPrepareDC(dc);
+
+        for(unsigned y = 0; y < 256; ++y)
+        for(unsigned x = 0; x < 256; ++x)
+            gc->DrawBitmap(bmp, x * 16.0f, y * 16.0f, 14.0f, 14.0f);
+
+        //OnDraw(gdc);
+    }
 }
 
 void grid_box_t::OnDraw(wxDC& dc)
