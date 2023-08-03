@@ -23,7 +23,7 @@ using namespace i2d;
 class file_def_t : public wxPanel
 {
 public:
-    file_def_t(wxWindow* parent, chr_file_t const& file, unsigned index);
+    file_def_t(wxWindow* parent, model_t const& model, chr_file_t const& file, unsigned index);
 
     void on_open(wxCommandEvent& event);
     void on_delete(wxCommandEvent& event);
@@ -31,6 +31,7 @@ public:
 
     unsigned index = 0;
 private:
+    model_t const& model;
     chr_file_t const& file;
     wxTextCtrl* filename;
     wxTextCtrl* name_entry;

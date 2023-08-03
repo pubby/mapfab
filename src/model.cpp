@@ -428,13 +428,10 @@ void model_t::write_file(FILE* fp, std::filesystem::path base_path) const
         std::fputc((i >> 8) & 0xFF, fp); // Hi
     };
 
-    std::fwrite("MapFab", 6, 1, fp);
+    std::fwrite("MapFab", 7, 1, fp);
 
     // Version:
     write8(SAVE_VERSION);
-    
-    // Unused:
-    write8(0);
 
     // Collision file:
     write_str(std::filesystem::proximate(collision_path, base_path));
@@ -567,9 +564,9 @@ void model_t::read_file(FILE* fp, std::filesystem::path base_path)
     char buffer[8];
     if(!std::fread(buffer, 8, 1, fp))
         throw std::runtime_error("Unable to read magic number.");
-    if(memcmp(buffer, "MapFab", 6) != 0)
+    if(memcmp(buffer, "MapFab", 7) != 0)
         throw std::runtime_error("Incorrect magic number.");
-    if(buffer[6] > SAVE_VERSION)
+    if(buffer[7] > SAVE_VERSION)
         throw std::runtime_error("File is from a newer version of MapFab.");
 
     // Collision file:

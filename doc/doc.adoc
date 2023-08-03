@@ -1,0 +1,267 @@
+= MapFab
+Copyright (c) 2023, Pubby
+Version 0.1
+:sectnums:
+:toc2:
+:toclevels: 3
+:toc-title: Table of Contents
+                                                                    
+:description: Documentation for MapFab
+:keywords: 
+:imagesdir: ./img
+
+== About this Document
+
+This documentation is for http://pubby.games/mapfab.html[MapFab].
+It is currently a work in progress, so comments and contributions are welcome.
+
+- Question can be asked on the https://discord.gg/RUrYmC5ZeE[Discord] or via https://pubby.games/email.png[email].
+- Changes can be submitted it via the https://github.com/pubby/mapfab[Github].
+
+== What is MapFab?
+
+MapFab is a metatile-based level editor designed for making NES games.
+Although it is intended to be used with the http://pubby.games/nesfab.html[NESFab programming language], 
+it can be used with other environments too.
+
+== Getting Started
+
+=== Installation
+
+MapFab is available on https://github.com/pubby/mapfab[Github]. 
+It is best to build it from scratch, but if that is not possible, download one of the https://github.com/pubby/mapfab/releases[releases].
+
+=== Resources
+
+It's a good idea to understand how NES graphics work before using MapFab.
+A good article on the subject is https://www.dustmop.io/blog/2015/04/28/nes-graphics-part-1/[NES Graphics - Part 1 by Dustmop] (Continued in https://www.dustmop.io/blog/2015/06/08/nes-graphics-part-2/[Part 2] and https://www.dustmop.io/blog/2015/12/18/nes-graphics-part-3/[Part 3]).
+
+Additionally, the https://www.nesdev.org/wiki/Nesdev_Wiki[NESDev wiki] has documentation which may come in handy:
+
+- https://www.nesdev.org/wiki/PPU_pattern_tables[PPU Pattern Tables]
+- https://www.nesdev.org/wiki/PPU_palettes[PPU Palettes]
+- https://www.nesdev.org/wiki/PPU_nametables[PPU Nametables]
+- https://www.nesdev.org/wiki/PPU_attribute_tables[PPU Attribute Tables]
+
+== Interface
+
+=== Tools
+
+MapFab has three tools available, selectable on the left side of the screen.
+
+image::tools.png[]
+
+1. *Stamp:* Used to place new tiles and objects.
+2. *Dropper:* Used to pick existing tiles and objects so that copies can be placed.
+3. *Selector:* Used to select tiles and objects for editing them. Right click to remove selections, and hold shift while left clicking to add onto existing selections.
+
+=== Tab Manager [[tab_manager]]
+
+Several tabs in MapFab have children tabs. 
+These children are managed using the "Tab Manager", accessible via the "View" menu.
+
+image::tab_manager.png[]
+
+Children tabs will be visible when the checkbox neck to their name is checked.
+The "Deselect All" and "Select by Name" buttons can be used to deselect or select multiple children tabs at once.
+
+Tabs can be created, deleted, renamed, or cloned by right clicking an existing tab entry. 
+
+image::tab_manager_right.png[]
+
+[NOTE]
+When using NESFab, it's recommended to name tabs using `snake_case`.
+
+Likewise, tabs can be reordered by clicking the "Up" or "Down" buttons.
+
+=== CHR Tab
+
+The CHR tab is used to import tilesets.
+
+*Collision Tileset*
+
+Each metatile in MapFab has a user-defined 6-bit collision value, representing how the metatile should behave in-game.
+For example, you might define solid walls to be the number 1, hazards as number 2, and open space as the number 0.
+To display these collision values in MapFab, a collision tileset is used, which is a 256x256 `.png` file with transparency.
+This file will be used for UI purposes only; it will not be displayed in games.
+
+Below is an example collision file. Although up to 64 collision values can be defined, this file only has graphics for the first 3.
+A few of the other tiles are labeled with their value.
+
+image::collision.png[]
+
+*CHR Tilesets*
+
+CHR tilesets form the game's graphics, and MapFab lets you define any number of them.
+Each CHR file should be a 128x128 image, imported from either a `.png` or `.chr`.
+These CHR files are associated with a name in MapFab which other tabs will reference.
+
+Below is an example CHR file. It is a non-indexed `.png` file that uses four shades of gray. Alternatively, a `.chr` file or indexed PNG may be used.
+
+image::chr.png[]
+
+=== Palettes Tab
+
+A NES palette is a set of 25 colors, and MapFab lets you define any number of these sets.
+
+On the left side of the palettes tab, a list of all possible NES colors is shown, serving as a picker.
+
+image::color_picker.png[]
+
+The right side of the palettes tab displays the defined palettes, where each row represents one palette. Rows can be added by raising the "Palette Count" number. To place colors, select them from the picker and then use the stamp tool.
+
+image::palette.png[]
+
+As one might expect, columns labeled "BG" represent background colors, while columns labeled "SPR" represent sprite colors. The column "UBC" represents the background color shared amongst all background tiles. Note that in MapFab, sprite colors will never be displayed elsewhere, but they can still be set for use in games.
+
+=== Metatiles Tab
+
+Although the NES uses 8x8 CHR tiles internally, levels in MapFab are defined using 16x16 tiles called "metatiles". 
+Each metatile is the combination of four 8x8 CHR tiles, along with a 2-bit palette attribute and a 6-bit collision value.
+The metatiles tab is used to define these.
+
+Before editing metatiles, a "Display CHR" and "Display Palette" must be chosen.
+As the name states, these settings are intended for display purposes only.
+In MapFab, the CHR and palette are saved per-level, not per-metatile set.
+
+image::metatiles_ui.png[]
+
+Once the "Display CHR" has been set, the left side of the metatiles tab will display the CHR tileset, serving as a picker.
+
+image::chr_tile_picker.png[]
+
+The right side of the metatiles tab displays the defined metatiles, with each 16x16 pixel region representing a metatile.
+The number of metatiles can be changed using the "Metatile Count" control.
+To place CHR tiles, select them from the picker and then use the stamp tool.
+
+image::metatiles.png[]
+
+Attributes of tiles to be placed can be changed using the radio buttons. Collision values can be edited using the same interface.
+
+image::attribute_ui.png[]
+
+To add or delete metatile sets, use the <<tab_manager>>.
+
+=== Levels Tab [[level]]
+
+Levels in MapFab are a grid of metatiles, along with any number of objects. 
+Additionally, they are defined to use a specific CHR tileset, and a specific palette index.
+
+Before editing a level, the "Metatiles", "CHR", and "Palette" must be chosen.
+By selecting the "Metatiles" first, the other fields will be automatically assigned.
+
+image::level_ui.png[]
+
+Above these controls, a "Macro" input is editable.
+When using NESFab, this value determines which macro handles the level.
+Otherwise, the value can be used for holding whatever metadata you like.
+
+image::macro.png[]
+
+Once "Metatiles" has been set, the left side of the levels tab will display the available metatiles, serving as a picker.
+
+image::metatile_picker.png[]
+
+The right side of the levels tab displays the actual level. To place metatiles, select them from the picker and then use the stamp tool.
+
+image::level.png[]
+
+To edit objects, first select the object layer:
+
+image::object_layer.png[]
+
+Objects can then be placed using the stamp tool:
+
+image::objects.png[]
+
+To edit an object's properties, select it, then left click on it. 
+This dialog will make more sense after reading the <<object_class>> section.
+
+image::object_editor.png[]
+
+The object placed by the stamp tool can be changed by clicking on the "Object Picker" button: 
+
+image::object_picker.png[]
+
+To add or delete levels sets, use the <<tab_manager>>.
+
+=== Object Classes Tab [[object_class]]
+
+Each object in MapFab is associated with an object class, which defines its properties.
+For example, you may have one object class for enemies, and another for power ups.
+The object classes tab lets you define these.
+
+To do so, first pick a color for the object class using the "Display Color" picker. 
+This determines how objects of that class will display in the <<level>>.
+
+image::object_classes.png[]
+
+Next, fields can be added to the object class.
+Each object belonging to the class will have its own defined value for each field.
+For example, you might have a field called "hitpoints", which determines how much life each placed enemy starts with.
+When using NESFab, the "Type" control control will determine the field's type.
+
+[NOTE]
+When using NESFab, it's recommended to name fields using `snake_case`, and avoid using arrays as types.
+
+To add or delete object classes, use the <<tab_manager>>.
+
+== `.mapfab` File Format
+
+MapFab projects are saved as `.mapfab` files, which is a binary format.
+Data is packed into the file using one of three types:
+
+- `byte`: an 8-bit integer.
+- `short`: a 16-bit little-endian integer.
+- `string`: a null-terminated string.
+
+Additionally, the syntax `type[N]` is used to define a sequence of `N` values.
+
+---
+
+The format is defined as follows:
+
+. *`string` Magic Number* - Seven bytes, including the terminator. Must equal the string: `MapFab`.
+. *`byte` Version* - The current `.mapfab` format version (currently 1).
+. *`string` Collision Tileset Path* - The path of the collision tileset, relative to the `.mapfab` file.
+. *`byte` CHR File Count* - The number of the CHR files. A value of 0 should be treated as 256.
+. *For each CHR File Count:*
+.. *`string` CHR Name* - The name of the CHR file.
+.. *`string` CHR Tileset Path* - The path of the CHR tileset, relative to the `.mapfab` file.
+. *`byte` Palette Count* - The number of palettes. A value of 0 should be treated as 256.
+. *For each Palette Count:*
+.. *`byte[25]` Palette* - The palette's colors from left to right.
+. *`byte` Metatile Set Count* - The number of metatile sets. A value of 0 should be treated as 256.
+. *For each Metatile Set Count:*
+.. *`string` Metatile Set Name* - The name of the metatile set.
+.. *`string` Metatile Set CHR* - The name of the metatile set's display CHR.
+.. *`byte` Metatile Set Palette* - The index of the metatile set's display palette.
+.. *`byte` Metatile Set Count* - The number of metatiles in this set. A value of 0 should be treated as 256.
+.. *`byte[1024]` Metatile Set Tiles* - The tiles of the metatile set, left-to-right, to-to-bottom.
+.. *`byte[256]` Metatile Set Attributes* - The attributes of the metatile set, left-to-right, top-to-bottom.
+.. *`byte[256]` Metatile Set Collisions* - The collisions of the metatile set, left-to-right, top-to-bottom.
+. *`byte` Object Class Count* - The number of object classes. A value of 0 should be treated as 256.
+. *For each Object Class Count:*
+.. *`string` Object Class Name* - The name of the object class.
+.. *`byte[3]` Object Class Color* - The RGB components of the object class's color.
+.. *`byte` Object Class Field Count* - The number of fields in the object class.
+.. *For each Object Class Field Count:*
+... *`string` Field Name* - The name of the field.
+... *`string` Field Type* - The type of the field.
+. *`byte` Level Count* - The number of object classes. A value of 0 should be treated as 256.
+. *For each Level Count:*
+.. *`string` Level Name* - The name of the level.
+.. *`string` Level Macro* - The level's macro string.
+.. *`string` Level CHR Name* - The name of the level's CHR data.
+.. *`byte` Level Palette Index* - The index of the level's palette.
+.. *`string` Level Metatile Set Name* - The name of the level's metatile set data.
+.. *`byte` Level Width* - The width of the level, in metatiles. A value of 0 should be treated as 256.
+.. *`byte` Level Height* - The height of the level, in metatiles. A value of 0 should be treated as 256.
+.. *`byte[Level Width * Level Height]` Level Metatiles* - The metatiles of the level, left-to-right, top-to-bottom.
+.. *`short` Level Object Count* - The number of objects in the level.
+.. *For each Level Object Count:*
+... *`string` Object Name* - The name of the object.
+... *`string` Object Class Name* - The name of the object's object class.
+... *`short` Object Class X-Position* - The X-position of the object.
+... *`short` Object Class Y-Position* - The Y-position of the object.
+... *`string[Object Class Field Count]` Object Fields* - The field values of the object, matching the order of the object class's fields.

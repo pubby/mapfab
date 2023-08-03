@@ -307,8 +307,16 @@ void level_canvas_t::draw_tiles(wxDC& dc)
         auto const& object = level->objects[i];
         coord_t const at = vec_mul(crop(object.position) + to_coord(margin()), scale);
 
-        dc.SetPen(wxPen());
-        dc.SetBrush(wxBrush(wxColor(255, 255, 255, 32)));
+        if(level->object_selector.count(i))
+        {
+            dc.SetPen(wxPen());
+            dc.SetBrush(wxBrush(wxColor(255, 255, 255, 128)));
+        }
+        else
+        {
+            dc.SetPen(wxPen());
+            dc.SetBrush(wxBrush(wxColor(255, 255, 255, 32)));
+        }
         dc.DrawCircle(at.x, at.y, object_radius() * 3 / 2);
     }
 
@@ -501,6 +509,7 @@ void level_canvas_t::on_down(mouse_button_t mb, coord_t at)
 
                     dragging_objects = true;
                     drag_last = pixel;
+                    model.modify();
                     goto selected;
                 }
             }
@@ -541,6 +550,7 @@ void level_canvas_t::on_up(mouse_button_t mb, coord_t at)
                     static_cast<level_editor_t*>(GetParent())->history.push(std::move(undo));
                 }
 
+                model.modify();
                 post_update();
             done_paste:
                 model.paste.reset();
@@ -591,6 +601,7 @@ void level_canvas_t::on_motion(coord_t at)
 
         drag_last = pixel;
 
+        model.modify();
         Refresh();
     }
     else
@@ -758,8 +769,9 @@ void level_editor_t::on_update()
 
 void level_editor_t::on_change_palette(wxSpinEvent& event)
 {
+    if(level->palette != event.GetPosition())
+        model.modify();
     level->palette = event.GetPosition(); 
-    model.modify();
     load_metatiles();
     Refresh();
 
@@ -800,15 +812,19 @@ void level_editor_t::model_refresh()
     std::string const metatiles_name = level->metatiles_name;
     std::string const chr_name = level->chr_name;
 
+    metatiles_combo->Unbind(wxEVT_TEXT, &level_editor_t::on_metatiles_text, this);
     metatiles_combo->Clear();
     for(auto const& metatiles : model.metatiles)
         metatiles_combo->Append(metatiles->name);
     metatiles_combo->SetValue(metatiles_name);
+    metatiles_combo->Bind(wxEVT_TEXT, &level_editor_t::on_metatiles_text, this);
 
+    chr_combo->Unbind(wxEVT_TEXT, &level_editor_t::on_chr_text, this);
     chr_combo->Clear();
     for(auto const& chr : model.chr_files)
         chr_combo->Append(chr.name);
     chr_combo->SetValue(chr_name);
+    chr_combo->Bind(wxEVT_TEXT, &level_editor_t::on_chr_text, this);
 
     load_metatiles();
 }
@@ -838,10 +854,13 @@ void level_editor_t::on_metatiles_select(wxCommandEvent& event)
         palette_ctrl->SetValue(level->palette);
     }
     load_metatiles();
+    model.modify();
 }
 
 void level_editor_t::on_metatiles_text(wxCommandEvent& event)
 {
+    if(level->metatiles_name != metatiles_combo->GetValue())
+        model.modify();
     level->metatiles_name = metatiles_combo->GetValue();
     load_metatiles();
 }
@@ -850,12 +869,18 @@ void level_editor_t::on_chr_select(wxCommandEvent& event)
 {
     int const index = event.GetSelection();
     if(index >= 0 && index < model.chr_files.size())
+    {
+        if(level->chr_name != model.chr_files[index].name)
+            model.modify();
         level->chr_name = model.chr_files[index].name;
+    }
     load_metatiles();
 }
 
 void level_editor_t::on_chr_text(wxCommandEvent& event)
 {
+    if(level->chr_name != chr_combo->GetValue())
+        model.modify();
     level->chr_name = chr_combo->GetValue();
     load_metatiles();
 }
@@ -878,11 +903,14 @@ void level_editor_t::on_delete(wxCommandEvent& event)
             level->objects.erase(level->objects.begin() + i);
 
     level->object_selector.clear();
+    model.modify();
     Refresh();
 }
 
 void level_editor_t::on_macro_name(wxCommandEvent& event)
 { 
+    if(level->macro_name != event.GetString().ToStdString())
+        model.modify();
     level->macro_name = event.GetString().ToStdString(); 
 }
 

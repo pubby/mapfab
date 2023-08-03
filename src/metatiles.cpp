@@ -168,6 +168,8 @@ metatile_editor_t::metatile_editor_t(wxWindow* parent, model_t& model, std::shar
 
 void metatile_editor_t::on_change_palette(wxSpinEvent& event)
 {
+    if(metatiles->palette != event.GetPosition())
+        model.modify();
     metatiles->palette = event.GetPosition(); 
     load_chr();
 }
@@ -197,12 +199,18 @@ void metatile_editor_t::on_combo_select(wxCommandEvent& event)
 {
     int const index = event.GetSelection();
     if(index >= 0 && index < model.chr_files.size())
+    {
+        if(metatiles->chr_name != model.chr_files[index].name)
+            model.modify();
         metatiles->chr_name = model.chr_files[index].name;
+    }
     load_chr();
 }
 
 void metatile_editor_t::on_combo_text(wxCommandEvent& event)
 {
+    if(metatiles->chr_name != chr_combo->GetValue())
+        model.modify();
     metatiles->chr_name = chr_combo->GetValue();
     load_chr();
 }
@@ -219,16 +227,20 @@ void metatile_editor_t::load_chr()
 void metatile_editor_t::model_refresh()
 {
     std::string const chr_name = metatiles->chr_name;
+    chr_combo->Unbind(wxEVT_TEXT, &metatile_editor_t::on_combo_text, this);
     chr_combo->Clear();
     for(auto const& chr : model.chr_files)
         chr_combo->Append(chr.name);
     chr_combo->SetValue(chr_name);
+    chr_combo->Bind(wxEVT_TEXT, &metatile_editor_t::on_combo_text, this);
 
     load_chr();
 }
 
 void metatile_editor_t::on_num(wxCommandEvent& event)
 {
+    if(metatiles->num != num_ctrl->GetValue())
+        model.modify();
     metatiles->num = num_ctrl->GetValue();
     Refresh();
 }

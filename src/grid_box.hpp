@@ -112,7 +112,6 @@ public:
         if(rtab_id < 0 || rtab_id >= int(GetList()->GetCount()))
             rtab_id = GetList()->GetCount() ? GetList()->GetCount() - 1 : 0;
 
-        auto& object = collection().emplace_back(std::make_shared<object_type>());
         wxString name;
         wxTextEntryDialog dlg(this, "Name:", std::string("New ") + P::name);
         if(dlg.ShowModal() == wxID_OK)
@@ -120,8 +119,11 @@ public:
         else
             return;
 
-        if(!handle_unique_name(object->name, name.ToStdString()))
+        if(!handle_unique_name("", name.ToStdString()))
             return;
+
+        auto& object = collection().emplace_back(std::make_shared<object_type>());
+        model.modify();
 
         object->name = name.ToStdString();
         GetList()->InsertItems(1, &name, rtab_id + 1);
@@ -134,7 +136,6 @@ public:
         if(rtab_id < 0 || rtab_id >= int(GetList()->GetCount()))
             return;
 
-        auto& object = collection().emplace_back(std::make_shared<object_type>(*collection().at(rtab_id)));
         wxString name;
         wxTextEntryDialog dlg(this, "Name:", std::string("New ") + P::name);
         if(dlg.ShowModal() == wxID_OK)
@@ -142,8 +143,11 @@ public:
         else
             return;
 
-        if(!handle_unique_name(object->name, name.ToStdString()))
+        if(!handle_unique_name("", name.ToStdString()))
             return;
+
+        auto& object = collection().emplace_back(std::make_shared<object_type>(*collection().at(rtab_id)));
+        model.modify();
 
         object->name = name.ToStdString();
         GetList()->InsertItems(1, &name, rtab_id + 1);
@@ -166,6 +170,7 @@ public:
         {
             GetList()->Delete(rtab_id);
             collection().erase(collection().begin() + rtab_id);
+            model.modify();
         }
     }
 
@@ -190,6 +195,7 @@ public:
             P::rename(model, old_name, collection().at(rtab_id)->name);
 
             GetList()->SetString(rtab_id, new_name);
+            model.modify();
         }
     }
 
@@ -206,7 +212,7 @@ private:
 
     bool handle_unique_name(std::string const& old_name, std::string const& name)
     {
-        if(old_name == name)
+        if(!old_name.empty() && old_name == name)
             return true;
 
         if(!unique_name(name))
@@ -416,7 +422,8 @@ public:
 
     void prepare_page(int i)
     {
-        P::on_page_changing(page(i), object(i));
+        if(i >= 0 && i <= (int)notebook->GetPageCount())
+            P::on_page_changing(page(i), object(i));
     }
 
     void on_page_changing(wxNotebookEvent& event) { prepare_page(event.GetSelection()); }
@@ -459,7 +466,7 @@ public:
                 if(page(j).ptr() == ptr)
                 {
                     order.push_back(i);
-                    if(notebook->GetSelection() == j)
+                    if((unsigned)notebook->GetSelection() == j)
                         last = i;
                     goto next_iter;
                 }
@@ -481,11 +488,11 @@ public:
 
             order = dlg.GetOrder();
 
-            for(size_t n = 0; n < order.size(); ++n) {
+            for(std::size_t n = 0; n < order.size(); ++n) {
                 if(order[n] >= 0) {
                     auto& object = collection().at(order[n]);
                     notebook->AddPage(new page_type(notebook, model, object), object->name);
-                    if(n == dlg.GetList()->GetSelection())
+                    if(n == (std::size_t)dlg.GetList()->GetSelection())
                         notebook->SetSelection(notebook->GetPageCount() - 1);
                 }
             }

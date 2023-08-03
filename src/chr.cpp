@@ -6,9 +6,10 @@
 // file_def_t //////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-file_def_t::file_def_t(wxWindow* parent, chr_file_t const& file, unsigned index)
+file_def_t::file_def_t(wxWindow* parent, model_t const& model, chr_file_t const& file, unsigned index)
 : wxPanel(parent, wxID_ANY)
 , index(index)
+, model(model)
 , file(file)
 {
     wxBoxSizer* row_sizer = new wxBoxSizer(wxHORIZONTAL);
@@ -61,6 +62,11 @@ void file_def_t::on_open(wxCommandEvent& event)
         this, _("Choose a file to open"), wxEmptyString, wxEmptyString, 
         _("CHR files (*.chr, *.bin, *.png)|*.chr;*.bin;*.png"),
         wxFD_OPEN, wxDefaultPosition);
+
+    if(!file.path.empty())
+        open_dialog.SetPath(file.path.string());
+    else if(!model.project_path.empty())
+        open_dialog.SetPath(model.project_path.string());
 
     // Creates a "open file" dialog with the file types
     if(open_dialog.ShowModal() == wxID_OK) // if the user click "Open" instead of "Cancel"
@@ -139,6 +145,11 @@ void chr_editor_t::on_open_collision(wxCommandEvent& event)
         _("Image Files (*.png)|*.png"),
         wxFD_OPEN, wxDefaultPosition);
 
+    if(!model.collision_path.empty())
+        open_dialog.SetPath(model.collision_path.string());
+    else if(!model.project_path.empty())
+        open_dialog.SetPath(model.project_path.string());
+
     // Creates a "open file" dialog with the file types
     if(open_dialog.ShowModal() == wxID_OK) // if the user click "Open" instead of "Cancel"
     {
@@ -147,11 +158,19 @@ void chr_editor_t::on_open_collision(wxCommandEvent& event)
         model.collision_path = filename;
         model.collision_bitmaps = load_collision_file(filename);
         Refresh();
+        model.modify();
     }
 }
 
 void chr_editor_t::on_delete(unsigned index) 
 { 
+    if(model.chr_files.size() <= 1)
+    {
+        wxMessageDialog dialog(this, "Unable to delete.\nAt least one CHR file must be defined.", "Error", wxICON_ERROR);
+        dialog.ShowModal();
+        return;
+    }
+
     wxString text;
     text << "Delete";
     if(!model.chr_files[index].name.empty())
@@ -169,6 +188,7 @@ void chr_editor_t::on_delete(unsigned index)
         for(unsigned i = 0; i < file_defs.size(); ++i)
             file_defs[i]->index = i;
         Fit();
+        model.modify();
     }
 }
 
@@ -194,6 +214,7 @@ void chr_editor_t::on_new(wxCommandEvent& event)
         file.name = new_name;
         new_file(file);
         Fit();
+        model.modify();
     }
 }
 
@@ -218,17 +239,20 @@ void chr_editor_t::on_rename(unsigned index, std::string str)
     for(auto& level : model.levels)
         if(level->chr_name == old_name)
             level->chr_name = str;
+
+    model.modify();
 }
 
 void chr_editor_t::on_open(unsigned index, std::string path)
 {
     model.chr_files[index].path = path;
     model.chr_files[index].load();
+    model.modify();
 }
 
 void chr_editor_t::new_file(chr_file_t const& file)
 {
-    auto* def = new file_def_t(this, file, file_defs.size());
+    auto* def = new file_def_t(this, model, file, file_defs.size());
     file_defs.emplace_back(def);
     file_sizer->Add(def, wxSizerFlags().Expand());
 }

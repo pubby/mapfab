@@ -302,8 +302,8 @@ class chr_layer_t : public tile_layer_t
 public:
     explicit chr_layer_t(std::uint8_t const& active) 
     : tile_layer_t({ 16, 16 }, { 32, 32 })
-    , attributes({ 16, 16 })
     , active(active)
+    , attributes({ 16, 16 })
     {}
 
     virtual unsigned format() const override { return LAYER_CHR; }
@@ -428,6 +428,8 @@ struct model_t
     bool modified = false;
     bool modified_since_save = false;
     void modify() { modified = modified_since_save = true; }
+
+    std::filesystem::path project_path;
 
     tool_t tool = {};
     std::unique_ptr<tile_copy_t> paste; 

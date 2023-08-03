@@ -89,6 +89,7 @@ public:
 private:
     void on_exit(wxCommandEvent& event);
     void on_about(wxCommandEvent& event);
+    void on_help(wxCommandEvent& event);
 
     void on_new_window(wxCommandEvent& event);
     void on_open(wxCommandEvent& event);
@@ -99,6 +100,8 @@ private:
     void on_tab_change(wxNotebookEvent& event);
     void refresh_tab(int tab);
     void refresh_tab();
+
+    void on_close(wxCloseEvent& event);
 
     template<undo_type_t U>
     void on_undo(wxCommandEvent& event)
@@ -132,8 +135,6 @@ private:
             bool const can_paste = true;
             paste->Enable(can_paste);
 
-            bool const metatiles = notebook->GetSelection() == TAB_METATILES;
-
             bool const can_fill = model.tool == TOOL_SELECT;
             cut->Enable(can_fill);
             copy->Enable(can_fill);
@@ -144,7 +145,18 @@ private:
 
         for(auto* item : zoom)
             item->Enable(editing);
-        manage->Enable(editing);
+
+        switch(notebook->GetSelection())
+        {
+        default:
+            manage->Enable(false);
+            break;
+        case TAB_PALETTE:
+        case TAB_METATILES:
+        case TAB_LEVELS:
+            manage->Enable(true);
+            break;
+        }
     }
 
     void update_ui(wxUpdateUIEvent& event)
@@ -324,7 +336,6 @@ private:
     std::array<wxMenuItem*, 5> zoom;
     wxMenuItem* manage;
 
-    std::filesystem::path project_path;
     std::unique_ptr<wxFileSystemWatcher> watcher;
 };
 
@@ -371,6 +382,7 @@ frame_t::frame_t()
 
     wxMenu* menu_help = new wxMenu;
     menu_help->Append(wxID_ABOUT);
+    menu_help->Append(wxID_INFO);
  
     wxMenuBar* menu_bar = new wxMenuBar;
     menu_bar->Append(menu_file, "&File");
@@ -422,6 +434,7 @@ frame_t::frame_t()
     SetSizer(sizer);
 
     Bind(wxEVT_MENU, &frame_t::on_about, this, wxID_ABOUT);
+    Bind(wxEVT_MENU, &frame_t::on_help, this, wxID_INFO);
     Bind(wxEVT_MENU, &frame_t::on_exit, this, wxID_EXIT);
     Bind(wxEVT_MENU, &frame_t::on_undo<UNDO>, this, wxID_UNDO);
     Bind(wxEVT_MENU, &frame_t::on_undo<REDO>, this, wxID_REDO);
@@ -446,6 +459,8 @@ frame_t::frame_t()
     Bind(wxEVT_TOOL, &frame_t::on_tool<TOOL_DROPPER>, this, ID_TOOL_DROPPER);
     Bind(wxEVT_TOOL, &frame_t::on_tool<TOOL_SELECT>, this, ID_TOOL_SELECT);
 
+    Bind(wxEVT_CLOSE_WINDOW, &frame_t::on_close, this);
+
     notebook->Bind(wxEVT_NOTEBOOK_PAGE_CHANGING, &frame_t::on_tab_change, this);
 
 
@@ -458,7 +473,22 @@ frame_t::frame_t()
  
 void frame_t::on_exit(wxCommandEvent& event)
 {
-    Close(true);
+    Close(false);
+}
+
+void frame_t::on_close(wxCloseEvent& event)
+{
+    if(event.CanVeto() && model.modified_since_save)
+    {
+        wxMessageDialog dialog(this, "Close without saving?", "Warning", wxOK | wxCANCEL | wxICON_WARNING);
+        if(dialog.ShowModal() != wxID_OK)
+        {
+            event.Veto();
+            return;
+        }
+    }
+
+    Destroy();
 }
  
 void frame_t::on_about(wxCommandEvent& event)
@@ -470,64 +500,10 @@ void frame_t::on_about(wxCommandEvent& event)
     wxMessageBox(string, "About MapFab", wxOK | wxICON_INFORMATION);
 }
 
-/* TODO
-void frame_t::on_open_chr(wxCommandEvent& event)
+void frame_t::on_help(wxCommandEvent& event)
 {
-    wxFileDialog* open_dialog = new wxFileDialog(
-        this, _("Choose a file to open"), wxEmptyString, wxEmptyString, 
-        _("CHR files (*.chr, *.bin)|*.chr;*.bin|Image Files (*.png)|*.png"),
-        wxFD_OPEN, wxDefaultPosition);
-    auto guard = make_scope_guard([&]{ open_dialog->Destroy(); });
-
-    // Creates a "open file" dialog with the file types
-    if(open_dialog->ShowModal() == wxID_OK) // if the user click "Open" instead of "Cancel"
-    {
-        chr_path = open_dialog->GetPath();
-        reset_watcher();
-        load_chr();
-        Refresh();
-    }
+    wxLaunchDefaultBrowser("https://pubby.games/mapfab/doc.html");
 }
-*/
-
-/* TODO
-void frame_t::on_open_collision(wxCommandEvent& event)
-{
-    wxFileDialog* open_dialog = new wxFileDialog(
-        this, _("Choose a file to open"), wxEmptyString, wxEmptyString, 
-        _("Image Files (*.bmp,*.gif,*.png)|*bmp;*.gif;*.png"),
-        wxFD_OPEN, wxDefaultPosition);
-    auto guard = make_scope_guard([&]{ open_dialog->Destroy(); });
-
-    if(open_dialog->ShowModal() == wxID_OK) // if the user click "Open" instead of "Cancel"
-    {
-        collisions_path = open_dialog->GetPath();
-        reset_watcher();
-        load_collisions();
-        Refresh();
-    }
-}
-
-/* TODO
-void frame_t::on_new(wxCommandEvent& event)
-{
-    int const answer = wxMessageBox("Create a new project?\nUnsaved progress will be lost.", "Confirm", wxOK | wxCANCEL, this);
-
-    if(answer != wxOK)
-        return;
-
-    project_path = "";
-    model = {};
-    model.refresh_chr();
-    refresh_title();
-
-    palette_editor->reload_model();
-    metatile_editor->reload_model();
-    level_editor->reload_model();
-
-    Refresh();
-}
-*/
 
 void frame_t::on_new_window(wxCommandEvent& event)
 {
@@ -552,33 +528,24 @@ void frame_t::on_open(wxCommandEvent& event)
 
         if(model.modified)
             frame = new frame_t();
-        frame->project_path = open_dialog->GetPath().ToStdString();
+        frame->model.project_path = open_dialog->GetPath().ToStdString();
 
-        FILE* fp = std::fopen(frame->project_path.c_str(), "rb");
+        FILE* fp = std::fopen(frame->model.project_path.c_str(), "rb");
         auto guard = make_scope_guard([&]{ std::fclose(fp); });
 
         std::string chr_name;
         std::string collisions_name;
 
-        frame->model.read_file(fp, frame->project_path);
+        frame->model.read_file(fp, frame->model.project_path);
 
-        path project(frame->project_path);
+        path project(frame->model.project_path);
         if(project.has_filename())
             project.remove_filename();
-
-        /* TODO
-        if(!chr_name.empty())
-            frame->chr_path = (project / path(chr_name)).string();
-        if(!collisions_name.empty())
-            frame->collisions_path = (project / path(collisions_name)).string();
-            */
 
         frame->chr_editor->load();
         frame->metatile_panel->load_pages();
         frame->levels_panel->load_pages();
         frame->reset_watcher();
-        //frame->load_chr();
-        //frame->load_collisions();
         frame->Update();
 
         if(frame == this)
@@ -593,7 +560,7 @@ void frame_t::on_open(wxCommandEvent& event)
 
 void frame_t::on_save(wxCommandEvent& event)
 {
-    if(project_path.empty())
+    if(model.project_path.empty())
         on_save_as(event);
     else
         do_save();
@@ -608,7 +575,7 @@ void frame_t::on_save_as(wxCommandEvent& event)
 
     if(save_dialog.ShowModal() != wxID_CANCEL) // if the user click "Save" instead of "Cancel"
     {
-        project_path = save_dialog.GetPath().ToStdString();
+        model.project_path = save_dialog.GetPath().ToStdString();
         do_save();
     }
 
@@ -617,35 +584,17 @@ void frame_t::do_save()
 {
     using namespace std::filesystem;
 
-    if(project_path.empty())
+    if(model.project_path.empty())
         throw std::runtime_error("Invalid file");
 
-    path project(project_path);
+    path project(model.project_path);
     if(project.has_filename())
         project.remove_filename();
 
-    std::string relative_chr;
-    /* TODO
-    if(!chr_path.IsEmpty())
-    {
-        path chr(chr_path.ToStdString());
-        relative_chr = relative(chr, project).string();
-    }
-    */
-
-    std::string relative_collisions;
-    /* TODO
-    if(!collisions_path.IsEmpty())
-    {
-        path collisions(collisions_path.ToStdString());
-        relative_collisions = relative(collisions, project).string();
-    }
-    */
-
-    FILE* fp = std::fopen(project_path.c_str(), "wb");
+    FILE* fp = std::fopen(model.project_path.c_str(), "wb");
     auto guard = make_scope_guard([&]{ std::fclose(fp); });
 
-    model.write_file(fp, project_path);
+    model.write_file(fp, model.project_path);
     model.modified_since_save = false;
     Update();
 }
@@ -654,11 +603,11 @@ void frame_t::refresh_title()
 {
     using namespace std::filesystem;
 
-    if(project_path.empty())
+    if(model.project_path.empty())
         SetTitle("MapFab");
     else
     {
-        path path = project_path;
+        path path = model.project_path;
         wxString title;
         if(model.modified_since_save)
             title << "*";

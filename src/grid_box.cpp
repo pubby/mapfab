@@ -242,7 +242,7 @@ void canvas_box_t::on_down(mouse_button_t mb, coord_t at)
 
     coord_t const pen = from_screen(at);
 
-    if(mb == MB_LEFT && model.tool == TOOL_DROPPER && in_bounds(pen, layer().canvas_dimen()))
+    if(mb == MB_LEFT && (model.tool == TOOL_DROPPER || wxGetKeyState(WXK_CONTROL)) && in_bounds(pen, layer().canvas_dimen()))
     {
         layer().dropper(pen);
         GetParent()->Refresh();
@@ -271,6 +271,9 @@ void canvas_box_t::on_up(mouse_button_t mb, coord_t mouse_end)
             return;
         }
     }
+
+    if(wxGetKeyState(WXK_CONTROL))
+        return;
 
     if(model.tool == TOOL_SELECT)
         selector_box_t::on_up(mb, mouse_end);

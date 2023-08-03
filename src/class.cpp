@@ -129,6 +129,7 @@ void class_editor_t::on_delete(unsigned index)
         for(unsigned i = 0; i < field_defs.size(); ++i)
             field_defs[i]->index = i;
         Fit();
+        model.modify();
     }
 }
 
@@ -154,12 +155,14 @@ void class_editor_t::on_new(wxCommandEvent& event)
         field.name = new_name;
         new_field(field);
         Fit();
+        model.modify();
     }
 }
 
 void class_editor_t::on_retype(unsigned index, std::string str)
 {
     oc->fields[index].type = str;
+    model.modify();
 }
 
 void class_editor_t::on_rename(unsigned index, std::string str)
@@ -188,12 +191,15 @@ void class_editor_t::on_rename(unsigned index, std::string str)
             }
         }
     }
+
+    model.modify();
 }
 
 void class_editor_t::on_color(wxColourPickerEvent& event)
 {
     wxColour const color = event.GetColour();
     oc->color = { color.Red(), color.Green(), color.Blue() };
+    model.modify();
 }
 
 void class_editor_t::new_field(class_field_t const& field)
@@ -201,4 +207,5 @@ void class_editor_t::new_field(class_field_t const& field)
     auto* def = new field_def_t(this, field, field_defs.size());
     field_defs.emplace_back(def);
     field_sizer->Add(def, wxSizerFlags().Expand());
+    model.modify();
 }
