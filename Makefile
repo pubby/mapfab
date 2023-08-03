@@ -35,7 +35,7 @@ endif
 
 override CXXFLAGS+= \
   `wx-config --cxxflags` \
-  -std=c++20 \
+  -std=gnu++20 \
   -Wall \
   -Wextra \
   -Wno-unused-parameter \

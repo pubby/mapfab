@@ -19,8 +19,8 @@ using namespace i2d;
 enum mouse_button_t
 {
     MB_NONE,
-    MB_LEFT,
-    MB_RIGHT,
+    MBTN_LEFT,
+    MBTN_RIGHT,
 };
 
 enum
@@ -268,10 +268,10 @@ protected:
     void on_motion(wxMouseEvent& event);
     void on_wheel(wxMouseEvent& event);
 
-    void on_left_down(wxMouseEvent& event)  { on_down(event, MB_LEFT); }
-    void on_left_up(wxMouseEvent& event)    { on_up(event,   MB_LEFT); }
-    void on_right_down(wxMouseEvent& event) { on_down(event, MB_RIGHT); }
-    void on_right_up(wxMouseEvent& event)   { on_up(event,   MB_RIGHT); }
+    void on_left_down(wxMouseEvent& event)  { on_down(event, MBTN_LEFT); }
+    void on_left_up(wxMouseEvent& event)    { on_up(event,   MBTN_LEFT); }
+    void on_right_down(wxMouseEvent& event) { on_down(event, MBTN_RIGHT); }
+    void on_right_up(wxMouseEvent& event)   { on_up(event,   MBTN_RIGHT); }
 
     void set_scale(int new_scale);
 };

@@ -388,7 +388,7 @@ void level_canvas_t::draw_tiles(wxDC& dc)
         coord_t const c1 = to_screen(r.e(), {1,1});
 
         dc.SetPen(wxPen(wxColor(255, 255, 255, 127), 0));
-        if(mouse_down == MB_LEFT)
+        if(mouse_down == MBTN_LEFT)
             dc.SetBrush(wxBrush(wxColor(0, 255, 255, 127)));
         else
             dc.SetBrush(wxBrush(wxColor(255, 0, 0, 127)));
@@ -418,7 +418,7 @@ void level_canvas_t::on_down(mouse_button_t mb, coord_t at)
 
                 if(e_dist(vec_mul(at, 256), pixel256) <= object_radius() * 256.0 / scale)
                 {
-                    if(mb == MB_LEFT)
+                    if(mb == MBTN_LEFT)
                     {
                         CallAfter([&, i]()
                         {
@@ -444,13 +444,13 @@ void level_canvas_t::on_down(mouse_button_t mb, coord_t at)
 
                 if(e_dist(vec_mul(at, 256), pixel256) <= object_radius() * 256.0 / scale)
                 {
-                    if(mb == MB_LEFT)
+                    if(mb == MBTN_LEFT)
                     {
                         if(!shift)
                             level->object_selector.clear();
                         level->object_selector.insert(i);
                     }
-                    else if(mb == MB_RIGHT)
+                    else if(mb == MBTN_RIGHT)
                     {
                         if(!level->object_selector.count(i))
                         {
@@ -469,7 +469,7 @@ void level_canvas_t::on_down(mouse_button_t mb, coord_t at)
 
             if(model.tool == TOOL_SELECT)
             {
-                if(mb == MB_RIGHT)
+                if(mb == MBTN_RIGHT)
                 {
                     for(int i = level->objects.size() - 1; i >= 0; --i)
                     {
@@ -496,7 +496,7 @@ void level_canvas_t::on_down(mouse_button_t mb, coord_t at)
             {
                 level->object_selector.clear();
 
-                if(mb == MB_LEFT && !dragging_objects)
+                if(mb == MBTN_LEFT && !dragging_objects)
                 {
                     level->object_selector.insert(level->objects.size());
 
@@ -529,9 +529,9 @@ void level_canvas_t::on_up(mouse_button_t mb, coord_t at)
     {
         if(model.paste && model.paste->format == LAYER_OBJECTS)
         {
-            if(mb == MB_RIGHT)
+            if(mb == MBTN_RIGHT)
                 goto done_paste;
-            else if(mb == MB_LEFT)
+            else if(mb == MBTN_LEFT)
             {
                 model.modify();
 
@@ -564,7 +564,7 @@ void level_canvas_t::on_up(mouse_button_t mb, coord_t at)
 
         if(selecting_objects && model.tool == TOOL_SELECT)
         {
-            if(mb == MB_LEFT && !shift)
+            if(mb == MBTN_LEFT && !shift)
                 level->object_selector.clear();
 
             rect_t const r = rect_from_2_coords(from_screen(object_select_start, {1,1}), from_screen(at, {1,1}));
@@ -576,7 +576,7 @@ void level_canvas_t::on_up(mouse_button_t mb, coord_t at)
 
                 if(in_bounds(at, r))
                 {
-                    if(mb == MB_LEFT)
+                    if(mb == MBTN_LEFT)
                         level->object_selector.insert(i);
                     else
                         level->object_selector.erase(i);

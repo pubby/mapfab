@@ -176,7 +176,7 @@ void selector_box_t::OnDraw(wxDC& dc)
     if(mouse_down)
     {
         dc.SetPen(wxPen(wxColor(255, 255, 255, 127), 0));
-        if(mouse_down == MB_LEFT)
+        if(mouse_down == MBTN_LEFT)
             dc.SetBrush(wxBrush(wxColor(255, 255, 0, 127)));
         else
             dc.SetBrush(wxBrush(wxColor(255, 0, 0, 127)));
@@ -192,12 +192,12 @@ void selector_box_t::on_up(mouse_button_t mb, coord_t mouse_end)
     if(!enable_tile_select())
         return;
 
-    if(mb == MB_LEFT && !wxGetKeyState(WXK_SHIFT))
+    if(mb == MBTN_LEFT && !wxGetKeyState(WXK_SHIFT))
         selector().select_all(false);
 
     selector().select(
         rect_from_2_coords(from_screen(mouse_start), from_screen(mouse_end)), 
-        mb == MB_LEFT);
+        mb == MBTN_LEFT);
     Refresh();
 }
 
@@ -242,7 +242,7 @@ void canvas_box_t::on_down(mouse_button_t mb, coord_t at)
 
     coord_t const pen = from_screen(at);
 
-    if(mb == MB_LEFT && (model.tool == TOOL_DROPPER || wxGetKeyState(WXK_CONTROL)) && in_bounds(pen, layer().canvas_dimen()))
+    if(mb == MBTN_LEFT && (model.tool == TOOL_DROPPER || wxGetKeyState(WXK_CONTROL)) && in_bounds(pen, layer().canvas_dimen()))
     {
         layer().dropper(pen);
         GetParent()->Refresh();
@@ -255,9 +255,9 @@ void canvas_box_t::on_up(mouse_button_t mb, coord_t mouse_end)
 
     if(pasting())
     {
-        if(mb == MB_RIGHT)
+        if(mb == MBTN_RIGHT)
             goto done_paste;
-        else if(mb == MB_LEFT)
+        else if(mb == MBTN_LEFT)
         {
             model.modify();
 
@@ -277,7 +277,7 @@ void canvas_box_t::on_up(mouse_button_t mb, coord_t mouse_end)
 
     if(model.tool == TOOL_SELECT)
         selector_box_t::on_up(mb, mouse_end);
-    else if(model.tool == TOOL_STAMP && mb == MB_LEFT)
+    else if(model.tool == TOOL_STAMP && mb == MBTN_LEFT)
     {
         bool modify = false;
         layer().for_each_picked(pen, [&](coord_t c, std::uint16_t tile)
@@ -362,7 +362,7 @@ void canvas_box_t::draw_overlays(wxDC& dc)
     else if(model.tool == TOOL_STAMP)
     {
         dc.SetPen(wxPen(wxColor(255, 255, 255, 127), 0));
-        dc.SetBrush(wxBrush(wxColor(0, 255, 255, mouse_down == MB_LEFT ? 127 : 31)));
+        dc.SetBrush(wxBrush(wxColor(0, 255, 255, mouse_down == MBTN_LEFT ? 127 : 31)));
         layer().for_each_picked(from_screen(mouse_current), [&](coord_t c, std::uint8_t tile)
         {
             coord_t const c0 = to_screen(c);
