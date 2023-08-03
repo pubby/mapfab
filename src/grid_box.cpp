@@ -7,6 +7,7 @@
 grid_box_t::grid_box_t(wxWindow* parent, bool can_zoom)
 : wxScrolledWindow(parent)
 {
+    SetDoubleBuffered(true);
     Bind(wxEVT_LEFT_DCLICK, &grid_box_t::on_left_down, this);
     Bind(wxEVT_LEFT_DOWN, &grid_box_t::on_left_down, this);
     Bind(wxEVT_LEFT_UP, &grid_box_t::on_left_up, this);

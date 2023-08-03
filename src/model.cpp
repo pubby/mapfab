@@ -692,7 +692,7 @@ void chr_file_t::load()
     chr = {};
     if(path.empty())
         return;
-    std::vector<std::uint8_t> data = read_binary_file(path.c_str());
+    std::vector<std::uint8_t> data = read_binary_file(path.string().c_str());
 
     std::string ext = path.extension().string();
     for(char& c : ext)
