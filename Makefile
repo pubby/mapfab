@@ -71,9 +71,7 @@ lodepng/lodepng.cpp
 IMGS:= \
 dropper.png \
 stamp.png \
-select.png \
-paint.png \
-paste.png
+select.png
 
 OBJS := $(foreach o,$(SRCS),$(OBJDIR)/$(o:.cpp=.o))
 DEPS := $(foreach o,$(SRCS),$(OBJDIR)/$(o:.cpp=.d))

@@ -11,10 +11,8 @@
 #include "2d/geometry.hpp"
 
 #include "stamp.png.inc"
-#include "paint.png.inc"
 #include "dropper.png.inc"
 #include "select.png.inc"
-#include "paste.png.inc"
 
 #include "model.hpp"
 #include "convert.hpp"
