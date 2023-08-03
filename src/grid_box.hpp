@@ -239,6 +239,7 @@ public:
     virtual dimen_t tile_size() const { return { 8, 8 }; }
     virtual dimen_t margin() const { return { 8, 8 }; }
 
+    void OnPaint(wxPaintEvent& event);
     void OnDraw(wxDC& dc) override;
 
     virtual void grid_resize(dimen_t dimen);

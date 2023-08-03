@@ -408,6 +408,7 @@ frame_t::frame_t()
     tool_bar->AddRadioTool(ID_TOOL_STAMP, "Stamp", MAKE_BITMAP(src_img_stamp_png));
     tool_bar->AddRadioTool(ID_TOOL_DROPPER, "Dropper", MAKE_BITMAP(src_img_dropper_png));
     tool_bar->AddRadioTool(ID_TOOL_SELECT, "Select", MAKE_BITMAP(src_img_select_png));
+    tool_bar->Realize();
 
     notebook = new wxNotebook(this, wxID_ANY, wxDefaultPosition, wxSize(600, 300));
 

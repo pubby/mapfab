@@ -1,5 +1,8 @@
 #include "grid_box.hpp"
 
+#include <wx/dcbuffer.h>
+#include <wx/graphics.h>
+
 ////////////////////////////////////////////////////////////////////////////////
 // grid_box_t //////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -19,10 +22,27 @@ grid_box_t::grid_box_t(wxWindow* parent, bool can_zoom)
         Bind(wxEVT_MOUSEWHEEL, &grid_box_t::on_wheel, this);
 
     Bind(wxEVT_UPDATE_UI, &grid_box_t::on_update, this);
+
+    Connect(wxEVT_PAINT, wxPaintEventHandler(grid_box_t::OnPaint), 0, this);
+    SetBackgroundStyle(wxBG_STYLE_PAINT);
+}
+
+void grid_box_t::OnPaint(wxPaintEvent& event)
+{
+    wxAutoBufferedPaintDC dc(this);
+#ifdef __WXMSW__
+    wxGraphicsRenderer* renderer = wxGraphicsRenderer::GetDirect2DRenderer();
+#else
+    wxGraphicsRenderer* renderer = wxGraphicsRenderer::GetDefaultRenderer();
+#endif
+    std::unique_ptr<wxGraphicsContext> gc(renderer->CreateContext(dc));
+    DoPrepareDC(dc);
+    OnDraw(dc);
 }
 
 void grid_box_t::OnDraw(wxDC& dc)
 {
+    std::printf("OnDraw %p\n", this);
     dc.SetFont(wxFont(wxFontInfo(4)));
     dc.SetUserScale(scale, scale);
     draw_tiles(dc);
