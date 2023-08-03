@@ -29,12 +29,18 @@ INCS:=-I$(SRCDIR)
 VERSION := "0.1"
 GIT_COMMIT := "$(shell git describe --abbrev=8 --dirty --always)"
 
+WXCONFIG := wx-config
+
 ifeq ($(ARCH),MINGW_CROSS)
 override CXX:=x86_64-w64-mingw32-g++
 endif
 
+ifeq ($(ARCH),MINGW_GTK3)
+override WXCONFIG:=wx-config-gtk3
+endif
+
 override CXXFLAGS+= \
-  `wx-config --cxxflags` \
+  `$(WXCONFIG) --cxxflags` \
   -std=gnu++20 \
   -Wall \
   -Wextra \
@@ -55,7 +61,7 @@ static: CXXFLAGS += -static -O3 -DNDEBUG
 
 VPATH=$(SRCDIR)
 
-LDLIBS:= `wx-config --libs`
+LDLIBS:= `$(WXCONFIG) --libs`
 
 SRCS:= \
 main.cpp \

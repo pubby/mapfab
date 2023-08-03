@@ -23,6 +23,7 @@ grid_box_t::grid_box_t(wxWindow* parent, bool can_zoom)
 
 void grid_box_t::OnDraw(wxDC& dc)
 {
+    dc.SetFont(wxFont(wxFontInfo(4)));
     dc.SetUserScale(scale, scale);
     draw_tiles(dc);
 }

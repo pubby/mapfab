@@ -11,11 +11,6 @@
 
 #include "2d/geometry.hpp"
 
-extern "C" 
-{
-#include "stamp.xpm"
-}
-
 #include "stamp.png.inc"
 #include "dropper.png.inc"
 #include "select.png.inc"
@@ -410,7 +405,7 @@ frame_t::frame_t()
 
     wxToolBar* tool_bar = new wxToolBar(this, wxID_ANY);
     tool_bar->SetWindowStyle(wxTB_VERTICAL);
-    tool_bar->AddRadioTool(ID_TOOL_STAMP, "Stamp", wxBitmap(stamp_xpm));
+    tool_bar->AddRadioTool(ID_TOOL_STAMP, "Stamp", MAKE_BITMAP(src_img_stamp_png));
     tool_bar->AddRadioTool(ID_TOOL_DROPPER, "Dropper", MAKE_BITMAP(src_img_dropper_png));
     tool_bar->AddRadioTool(ID_TOOL_SELECT, "Select", MAKE_BITMAP(src_img_select_png));
 

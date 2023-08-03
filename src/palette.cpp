@@ -24,34 +24,40 @@ static char int_to_char(int i)
     }
 }
 
+template<bool ShowNum>
 void draw_color_tile(wxDC& dc, unsigned color, coord_t at)
 {
     rgb_t const rgb = nes_colors[color % 64];
-    rgb_t text_rgb;
-
-    if(color == 0x0D)
-        text_rgb = RED;
-    else
-    {
-        if((color & 0xF) >= 0xE && color != 0xF)
-            text_rgb = GREY;
-        else if(distance(rgb, BLACK) < distance(rgb, WHITE))
-            text_rgb = WHITE;
-        else
-            text_rgb = BLACK;
-    }
-
     dc.SetPen(wxPen());
     dc.SetBrush(wxBrush(wxColor(rgb.r, rgb.g, rgb.b)));
     dc.DrawRectangle(at.x, at.y, color_tile_size, color_tile_size);
 
-    dc.SetTextForeground(wxColor(text_rgb.r, text_rgb.g, text_rgb.b));
-    wxString string;
-    string << int_to_char(color >> 4);
-    string << int_to_char(color & 0x0F);
-    dc.SetFont(wxFont(wxFontInfo(4)));
-    dc.DrawText(string, { at.x+4, at.y+5 });
+    if(ShowNum)
+    {
+        rgb_t text_rgb;
+
+        if(color == 0x0D)
+            text_rgb = RED;
+        else
+        {
+            if((color & 0xF) >= 0xE && color != 0xF)
+                text_rgb = GREY;
+            else if(distance(rgb, BLACK) < distance(rgb, WHITE))
+                text_rgb = WHITE;
+            else
+                text_rgb = BLACK;
+        }
+
+        dc.SetTextForeground(wxColor(text_rgb.r, text_rgb.g, text_rgb.b));
+        wxString string;
+        string << int_to_char(color >> 4);
+        string << int_to_char(color & 0x0F);
+        dc.DrawText(string, { at.x+4, at.y+5 });
+    }
 }
+
+template void draw_color_tile<true>(wxDC& dc, unsigned color, coord_t at);
+template void draw_color_tile<false>(wxDC& dc, unsigned color, coord_t at);
 
 ////////////////////////////////////////////////////////////////////////////////
 // palette_canvas_t ///////////////////////////////////////////////////////////
