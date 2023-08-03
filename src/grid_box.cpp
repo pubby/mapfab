@@ -35,14 +35,16 @@ void grid_box_t::OnPaint(wxPaintEvent& event)
 #else
     wxGraphicsRenderer* renderer = wxGraphicsRenderer::GetDefaultRenderer();
 #endif
-    std::unique_ptr<wxGraphicsContext> gc(renderer->CreateContext(dc));
+    wxGraphicsContext* gc(renderer->CreateContext(dc));
+    gc->SetInterpolationQuality(wxINTERPOLATION_NONE);
+    gc->SetAntialiasMode(wxANTIALIAS_NONE);
+    dc.SetGraphicsContext(gc);
     DoPrepareDC(dc);
     OnDraw(dc);
 }
 
 void grid_box_t::OnDraw(wxDC& dc)
 {
-    std::printf("OnDraw %p\n", this);
     dc.SetFont(wxFont(wxFontInfo(4)));
     dc.SetUserScale(scale, scale);
     draw_tiles(dc);
