@@ -7,6 +7,7 @@
 #include <wx/clipbrd.h>
 
 #include <filesystem>
+#include <cstring>
 
 #include "2d/geometry.hpp"
 
@@ -528,7 +529,7 @@ void frame_t::on_open(wxCommandEvent& event)
             frame = new frame_t();
         frame->model.project_path = open_dialog->GetPath().ToStdString();
 
-        FILE* fp = std::fopen(frame->model.project_path.c_str(), "rb");
+        FILE* fp = std::fopen(frame->model.project_path.string().c_str(), "rb");
         auto guard = make_scope_guard([&]{ std::fclose(fp); });
 
         std::string chr_name;
@@ -589,7 +590,7 @@ void frame_t::do_save()
     if(project.has_filename())
         project.remove_filename();
 
-    FILE* fp = std::fopen(model.project_path.c_str(), "wb");
+    FILE* fp = std::fopen(model.project_path.string().c_str(), "wb");
     auto guard = make_scope_guard([&]{ std::fclose(fp); });
 
     model.write_file(fp, model.project_path);

@@ -17,7 +17,6 @@
 #include "tool.hpp"
 
 using namespace i2d;
-namespace bc = ::boost::container;
 
 class tile_layer_t;
 class metatile_layer_t;

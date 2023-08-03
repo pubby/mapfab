@@ -434,14 +434,14 @@ void model_t::write_file(FILE* fp, std::filesystem::path base_path) const
     write8(SAVE_VERSION);
 
     // Collision file:
-    write_str(std::filesystem::proximate(collision_path, base_path));
+    write_str(std::filesystem::proximate(collision_path, base_path).string());
 
     // CHR:
     write8(chr_files.size() & 0xFF);
     for(auto const& file : chr_files)
     {
         write_str(file.name);
-        write_str(std::filesystem::proximate(file.path, base_path));
+        write_str(std::filesystem::proximate(file.path, base_path).string());
     }
 
     // Palettes:
