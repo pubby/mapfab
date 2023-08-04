@@ -152,6 +152,7 @@ private:
             break;
         case TAB_METATILES:
         case TAB_LEVELS:
+        case TAB_CLASSES:
             manage->Enable(true);
             break;
         }
