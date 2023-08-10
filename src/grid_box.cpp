@@ -326,7 +326,6 @@ void canvas_box_t::on_up(mouse_button_t mb, coord_t mouse_end)
         model.modify();
 
         editor().history.push(layer().save(pen));
-        //history.push(make_undo({ pen, picker().select_rect().d }));
 
         layer().for_each_picked(pen, [&](coord_t c, std::uint16_t tile)
         { 
@@ -419,7 +418,17 @@ editor_t::editor_t(wxWindow* parent)
 
 tile_copy_t editor_t::copy(bool cut) 
 { 
-    auto ret = layer().copy(cut); 
+    tile_copy_t ret;
+
+    if(cut)
+    {
+        undo_t undo;
+        ret = layer().copy(&undo); 
+        history.push(std::move(undo));
+    }
+    else
+        ret = layer().copy(); 
+
     Refresh();
     return ret;
 }

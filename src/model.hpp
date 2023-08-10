@@ -210,7 +210,7 @@ public:
     virtual std::uint16_t to_tile(coord_t pick) const { return pick.x + pick.y * picker_selector.dimen().w; }
     virtual coord_t to_pick(std::uint8_t tile) const { return { tile % picker_selector.dimen().w, tile / picker_selector.dimen().w }; }
 
-    virtual tile_copy_t copy(bool cut = false);
+    virtual tile_copy_t copy(undo_t* cut = nullptr);
     virtual void paste(tile_copy_t const& copy, coord_t at);
 
     virtual undo_t fill();

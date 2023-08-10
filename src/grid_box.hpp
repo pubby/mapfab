@@ -333,7 +333,6 @@ protected:
 
     virtual select_map_t& selector() const override { return layer().canvas_selector; }
 
-    //virtual undo_t make_undo(rect_t rect) = 0; TODO
     virtual void post_update() {}
 
     virtual void on_down(mouse_button_t mb, coord_t at) override;

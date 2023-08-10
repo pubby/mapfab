@@ -139,12 +139,15 @@ void select_map_t::recalc_select_rect(rect_t range)
 // tile_layer_t ///////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-tile_copy_t tile_layer_t::copy(bool cut)
+tile_copy_t tile_layer_t::copy(undo_t* cut)
 {
     rect_t const rect = crop(canvas_selector.select_rect(), canvas_dimen());
     tile_copy_t copy = { format() };
     grid_t<std::uint16_t> tiles;
     tiles.resize(rect.d);
+    if(cut)
+        *cut = save(rect);
+
     for(coord_t c : rect_range(rect))
     {
         if(canvas_selector[c])
