@@ -270,7 +270,27 @@ public:
     explicit color_layer_t(std::uint16_t& num) 
     : tile_layer_t({ 4, 16 }, { 25, 256 }) 
     , num(num)
-    { tiles.fill(0x0F); }
+    { 
+        tiles.fill(0x0F); 
+
+        constexpr unsigned example_palette[25] =
+        {
+            0x11, 0x2B, 0x39,
+            0x13, 0x21, 0x3B,
+            0x15, 0x23, 0x31,
+            0x17, 0x25, 0x33,
+
+            0x02, 0x14, 0x26,
+            0x04, 0x16, 0x28,
+            0x06, 0x18, 0x2A,
+            0x08, 0x1A, 0x2C,
+
+            0x0F 
+        };
+
+        for(unsigned i = 0; i < 25; ++i)
+            tiles[{i, 0}] = example_palette[i];
+    }
 
     virtual unsigned format() const override { return LAYER_COLOR; }
     virtual dimen_t tile_size() const override { return { 16, 16 }; }
@@ -421,8 +441,10 @@ struct model_t
     {
         chr_files.push_back({ "chr" });
         object_classes.push_back(std::make_shared<object_class_t>("object"));
-        metatiles.emplace_back(std::make_shared<metatile_model_t>());
-        levels.emplace_back(std::make_shared<level_model_t>());
+        metatiles.emplace_back(std::make_shared<metatile_model_t>())->chr_name = "chr";
+        auto& level = levels.emplace_back(std::make_shared<level_model_t>());
+        level->chr_name = "chr";
+        level->metatiles_name = "metatiles";
     }
 
     bool modified = false;
