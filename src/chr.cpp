@@ -156,7 +156,9 @@ void chr_editor_t::on_open_collision(wxCommandEvent& event)
         std::string filename = open_dialog.GetPath().ToStdString();
         collision_filename->SetValue(filename);
         model.collision_path = filename;
-        model.collision_bitmaps = load_collision_file(filename);
+        auto bm = load_collision_file(filename);
+        model.collision_bitmaps = std::move(bm.first);
+        model.collision_wx_bitmaps = std::move(bm.second);
         Refresh();
         model.modify();
     }

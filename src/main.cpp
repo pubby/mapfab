@@ -27,6 +27,69 @@
 
 using namespace i2d;
 
+class level_grid_dialog_t : public wxDialog
+{
+public:
+    level_grid_dialog_t(wxWindow* parent, model_t& model)
+    : wxDialog(parent, wxID_ANY, "Level Grid")
+    , model(model)
+    {
+        wxBoxSizer* main_sizer = new wxBoxSizer(wxVERTICAL);
+
+        wxStaticText* label = new wxStaticText(this, wxID_ANY, "Values of 0 use the default behavior.");
+        main_sizer->Add(label, 0, wxALL, 2);
+        main_sizer->AddSpacer(8);
+
+        wxPanel* xy_panel = new wxPanel(this);
+        {
+            wxBoxSizer* sizer = new wxBoxSizer(wxHORIZONTAL);
+
+            wxStaticText* x_label = new wxStaticText(xy_panel, wxID_ANY, "X:");
+            x_ctrl= new wxSpinCtrl(xy_panel);
+            x_ctrl->SetRange(0, 256*16);
+            x_ctrl->SetValue(model.level_grid_x);
+            sizer->Add(x_label, 0, wxALL | wxCENTER, 2);
+            sizer->Add(x_ctrl, 0, wxALL, 2);
+            sizer->AddSpacer(16);
+
+            wxStaticText* y_label = new wxStaticText(xy_panel, wxID_ANY, "Y:");
+            y_ctrl= new wxSpinCtrl(xy_panel);
+            y_ctrl->SetRange(0, 256*16);
+            y_ctrl->SetValue(model.level_grid_y);
+            sizer->Add(y_label, 0, wxALL | wxCENTER, 2);
+            sizer->Add(y_ctrl, 0, wxALL, 2);
+
+            xy_panel->SetSizer(sizer);
+        }
+        main_sizer->Add(xy_panel, 0, wxALL, 2);
+        main_sizer->AddSpacer(8);
+
+        wxButton* ok_button = new wxButton(this, wxID_OK, "Ok");
+        main_sizer->Add(ok_button, 0, wxALL | wxCENTER, 2);
+
+        x_ctrl->Bind(wxEVT_SPINCTRL, &level_grid_dialog_t::on_change_x, this);
+        y_ctrl->Bind(wxEVT_SPINCTRL, &level_grid_dialog_t::on_change_y, this);
+
+        SetSizerAndFit(main_sizer);
+    }
+
+private:
+    model_t& model;
+
+    wxSpinCtrl* x_ctrl;
+    wxSpinCtrl* y_ctrl;
+
+    void on_change_x(wxSpinEvent& event)
+    {
+        model.level_grid_x = event.GetPosition(); 
+    }
+
+    void on_change_y(wxSpinEvent& event)
+    {
+        model.level_grid_y = event.GetPosition(); 
+    }
+};
+ 
 class clip_data_t : public wxDataObjectSimple
 {
 public:
@@ -140,18 +203,33 @@ private:
             fill->Enable(can_fill);
             fill_paste->Enable(can_fill && can_paste);
             fill_attribute->Enable(can_fill && notebook->GetSelection() == TAB_METATILES);
+            select_all->Enable(true);
+            select_none->Enable(true);
+        }
+        else
+        {
+            cut->Enable(false);
+            copy->Enable(false);
+            fill->Enable(false);
+            fill_paste->Enable(false);
+            fill_attribute->Enable(false);
+            select_all->Enable(false);
+            select_none->Enable(false);
         }
 
         for(auto* item : zoom)
             item->Enable(editing);
+
+        show_collisions->Enable(notebook->GetSelection() == TAB_LEVELS || notebook->GetSelection() == TAB_METATILES);
+        level_grid->Enable(notebook->GetSelection() == TAB_LEVELS);
 
         switch(notebook->GetSelection())
         {
         default:
             manage->Enable(false);
             break;
-        case TAB_METATILES:
         case TAB_LEVELS:
+        case TAB_METATILES:
         case TAB_CLASSES:
             manage->Enable(true);
             break;
@@ -170,7 +248,9 @@ private:
 
         if(event.GetChangeType() == wxFSW_EVENT_MODIFY)
         {
-            model.collision_bitmaps = load_collision_file(model.collision_path.string());
+            auto bm = load_collision_file(model.collision_path.string());
+            model.collision_bitmaps = std::move(bm.first);
+            model.collision_wx_bitmaps = std::move(bm.second);
             for(auto& chr : model.chr_files)
                 chr.load();
             refresh_tab();
@@ -218,6 +298,14 @@ private:
     {
         if(auto* tabs = get_tab_panel())
             tabs->on_manage();
+    }
+
+    void on_show_collisions(wxCommandEvent& event)
+    {
+        model.show_collisions ^= true;
+        metatile_panel->Refresh();
+        if(auto* page = levels_panel->page())
+            page->load_metatiles();
     }
 
     template<bool Cut>
@@ -302,6 +390,26 @@ private:
         }
     }
 
+    template<bool Select>
+    void on_select_all(wxCommandEvent& event)
+    {
+        model.tool = TOOL_SELECT;
+        for(auto* tool : tools)
+            tool->Toggle(false);
+        tool_bar->ToggleTool(ID_TOOL_SELECT, true);
+        tool_bar->Refresh();
+        if(editor_t* editor = get_editor())
+            editor->select_all(Select);
+    }
+
+    void on_level_grid(wxCommandEvent& event)
+    {
+        level_grid_dialog_t dialog(this, model);
+        dialog.ShowModal();
+        dialog.Destroy();
+        levels_panel->Refresh();
+    }
+
     base_tab_panel_t* get_tab_panel()
     {
         switch(notebook->GetSelection())
@@ -343,6 +451,12 @@ private:
     wxMenuItem* fill_attribute;
     std::array<wxMenuItem*, 5> zoom;
     wxMenuItem* manage;
+    wxMenuItem* show_collisions;
+    wxMenuItem* level_grid;
+    wxMenuItem* select_all;
+    wxMenuItem* select_none;
+    wxToolBar* tool_bar;
+    std::vector<wxToolBarToolBase*> tools;
 
     std::unique_ptr<wxFileSystemWatcher> watcher;
 };
@@ -355,7 +469,7 @@ bool app_t::OnInit()
     frame->SendSizeEvent();
     return true;
 } 
- 
+
 frame_t::frame_t()
 : wxFrame(nullptr, wxID_ANY, "MapFab", wxDefaultPosition, wxSize(800, 600))
 {
@@ -377,10 +491,16 @@ frame_t::frame_t()
     menu_edit->AppendSeparator();
     fill = menu_edit->Append(ID_FILL, "Fill Selection\tCTRL+F");
     fill_paste = menu_edit->Append(ID_FILL_PASTE, "Fill Selection with Paste\tCTRL+SHIFT+F");
-    fill_attribute = menu_edit->Append(ID_FILL_ATTRIBUTE, "Fill Selection with Attribute\tCTRL+SHIFT+A");
+    fill_attribute = menu_edit->Append(ID_FILL_ATTRIBUTE, "Fill Selection with Attribute\tCTRL+D");
+    menu_edit->AppendSeparator();
+    select_all = menu_edit->Append(ID_SELECT_ALL, "Select All\tCTRL+A");
+    select_none = menu_edit->Append(ID_SELECT_NONE, "Select None\tCTRL+SHIFT+A");
 
     wxMenu* menu_view = new wxMenu;
     manage = menu_view->Append(ID_MANAGE_TABS, "&Manage Tabs\tCTRL+T");
+    menu_view->AppendSeparator();
+    show_collisions = menu_view->Append(ID_SHOW_COLLISIONS, "&Toggle Collisions\tALT+C");
+    level_grid = menu_view->Append(ID_LEVEL_GRID, "&Configure Level Grid");
     menu_view->AppendSeparator();
     zoom[0] = menu_view->Append(ID_ZOOM_100,  "&Zoom 1x");
     zoom[1] = menu_view->Append(ID_ZOOM_200,  "&Zoom 2x");
@@ -400,7 +520,7 @@ frame_t::frame_t()
 
     SetMenuBar(menu_bar);
  
-    CreateStatusBar();
+    model.status_bar = CreateStatusBar();
 
     auto const make_bitmap = [&](char const* name, unsigned char const* data, std::size_t size)
     {
@@ -412,11 +532,11 @@ frame_t::frame_t()
     };
 #define MAKE_BITMAP(x) make_bitmap(#x, x, x##_size)
 
-    wxToolBar* tool_bar = new wxToolBar(this, wxID_ANY);
+    tool_bar = new wxToolBar(this, wxID_ANY);
     tool_bar->SetWindowStyle(wxTB_VERTICAL);
-    tool_bar->AddRadioTool(ID_TOOL_STAMP, "Stamp", MAKE_BITMAP(src_img_stamp_png));
-    tool_bar->AddRadioTool(ID_TOOL_DROPPER, "Dropper", MAKE_BITMAP(src_img_dropper_png));
-    tool_bar->AddRadioTool(ID_TOOL_SELECT, "Select", MAKE_BITMAP(src_img_select_png));
+    tools.push_back(tool_bar->AddRadioTool(ID_TOOL_STAMP, "Stamp", MAKE_BITMAP(src_img_stamp_png)));
+    tools.push_back(tool_bar->AddRadioTool(ID_TOOL_DROPPER, "Dropper", MAKE_BITMAP(src_img_dropper_png)));
+    tools.push_back(tool_bar->AddRadioTool(ID_TOOL_SELECT, "Select", MAKE_BITMAP(src_img_select_png)));
     tool_bar->Realize();
 
     notebook = new wxNotebook(this, wxID_ANY, wxDefaultPosition, wxSize(600, 300));
@@ -463,6 +583,10 @@ frame_t::frame_t()
     Bind(wxEVT_MENU, &frame_t::on_zoom<3>, this, ID_ZOOM_800);
     Bind(wxEVT_MENU, &frame_t::on_zoom<4>, this, ID_ZOOM_1600);
     Bind(wxEVT_MENU, &frame_t::on_manage, this, ID_MANAGE_TABS);
+    Bind(wxEVT_MENU, &frame_t::on_show_collisions, this, ID_SHOW_COLLISIONS);
+    Bind(wxEVT_MENU, &frame_t::on_select_all<true>, this, ID_SELECT_ALL);
+    Bind(wxEVT_MENU, &frame_t::on_select_all<false>, this, ID_SELECT_NONE);
+    Bind(wxEVT_MENU, &frame_t::on_level_grid, this, ID_LEVEL_GRID);
 
     Bind(wxEVT_TOOL, &frame_t::on_tool<TOOL_STAMP>, this, ID_TOOL_STAMP);
     Bind(wxEVT_TOOL, &frame_t::on_tool<TOOL_DROPPER>, this, ID_TOOL_DROPPER);
@@ -528,7 +652,7 @@ void frame_t::on_open(wxCommandEvent& event)
 
     wxFileDialog* open_dialog = new wxFileDialog(
         this, _("Choose a file to open"), wxEmptyString, wxEmptyString, 
-        _("MapFab Files (*.mapfab)|*.mapfab"),
+        _("MapFab Imports (*.mapfab;*.json)|*.mapfab;*.json|MapFab Files (*.mapfab)|*.mapfab|JSON Files (*.json)|*.json"),
         wxFD_OPEN, wxDefaultPosition);
     auto guard = make_scope_guard([&]{ open_dialog->Destroy(); });
 
@@ -543,10 +667,10 @@ void frame_t::on_open(wxCommandEvent& event)
         FILE* fp = std::fopen(frame->model.project_path.string().c_str(), "rb");
         auto guard = make_scope_guard([&]{ std::fclose(fp); });
 
-        std::string chr_name;
-        std::string collisions_name;
-
-        frame->model.read_file(fp, frame->model.project_path);
+        if(model.project_path.extension() == ".json")
+            frame->model.read_json(fp, frame->model.project_path);
+        else
+            frame->model.read_file(fp, frame->model.project_path);
 
         path project(frame->model.project_path);
         if(project.has_filename())
@@ -581,7 +705,7 @@ void frame_t::on_save_as(wxCommandEvent& event)
 {
     wxFileDialog save_dialog(
         this, _("Save file as"), wxEmptyString, _("unnamed"), 
-        _("MapFab Files (*.mapfab)|*.mapfab"),
+        _("MapFab Exports (*.mapfab;*.json)|*.mapfab;*.json|MapFab Files (*.mapfab)|*.mapfab|JSON Files (*.json)|*.json"),
         wxFD_SAVE | wxFD_OVERWRITE_PROMPT, wxDefaultPosition);
 
     if(save_dialog.ShowModal() != wxID_CANCEL) // if the user click "Save" instead of "Cancel"
@@ -605,7 +729,10 @@ void frame_t::do_save()
     FILE* fp = std::fopen(model.project_path.string().c_str(), "wb");
     auto guard = make_scope_guard([&]{ std::fclose(fp); });
 
-    model.write_file(fp, model.project_path);
+    if(model.project_path.extension() == ".json")
+        model.write_json(fp, model.project_path);
+    else
+        model.write_file(fp, model.project_path);
     model.modified_since_save = false;
     Update();
 }
@@ -630,6 +757,7 @@ void frame_t::refresh_title()
 
 void frame_t::on_tab_change(wxNotebookEvent& event)
 {
+    model.status_bar->SetStatusText("");
     if(event.GetOldSelection() == TAB_CHR)
         reset_watcher();
     refresh_tab(event.GetSelection());

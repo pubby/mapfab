@@ -60,12 +60,12 @@ std::vector<attr_bitmaps_t> chr_to_bitmaps(std::uint8_t const* data, std::size_t
     return ret;
 }
 
-std::vector<bitmap_t> load_collision_file(wxString const& string)
+std::pair<std::vector<bitmap_t>, std::vector<wxBitmap>> load_collision_file(wxString const& string)
 {
     if(string.IsEmpty())
         return {};
 
-    std::vector<bitmap_t> ret;
+    std::pair<std::vector<bitmap_t>, std::vector<wxBitmap>> ret;
     wxImage base(string);
     if(!base.IsOk())
         return {};
@@ -76,10 +76,11 @@ std::vector<bitmap_t> load_collision_file(wxString const& string)
         //wxImage tile(string);
         tile.Resize({ 16, 16 }, { c.x * -16, c.y * -16 }, 255, 0, 255);
 #ifdef GC_RENDER
-        ret.emplace_back(get_renderer()->CreateBitmapFromImage(tile));
+        ret.first.emplace_back(get_renderer()->CreateBitmapFromImage(tile));
 #else
-        ret.emplace_back(tile);
+        ret.first.emplace_back(tile);
 #endif
+        ret.second.emplace_back(tile);
     }
 
     return ret;

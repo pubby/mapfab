@@ -2,7 +2,10 @@
 
 #include <ranges>
 
+#include "json.hpp"
 #include "graphics.hpp"
+
+using json = nlohmann::json;
 
 ////////////////////////////////////////////////////////////////////////////////
 // object_t ////////////////////////////////////////////////////////////////////
@@ -189,7 +192,6 @@ undo_t tile_layer_t::fill()
 
     canvas_selector.for_each_selected([&](coord_t c)
     {
-        std::uint8_t const tile = to_tile(c);
         coord_t const o = c - canvas_rect.c;
         coord_t const p = coord_t{ o.x % picker_rect.d.w, o.y % picker_rect.d.h } + picker_rect.c;
         set(c, to_tile(p));
@@ -212,12 +214,10 @@ undo_t tile_layer_t::fill_paste(tile_copy_t const& copy)
 
         canvas_selector.for_each_selected([&](coord_t c)
         {
-            std::uint8_t const tile = to_tile(c);
-
             coord_t const o = c - canvas_rect.c;
             coord_t const p = coord_t{ o.x % copy_dimen.w, o.y % copy_dimen.h };
 
-            if(~(*grid)[p] && in_bounds(c, canvas_dimen()))
+            if((*grid)[p] != std::uint16_t(~0u) && in_bounds(c, canvas_dimen()))
                 set(c, (*grid)[p]);
         });
 
@@ -284,7 +284,9 @@ void level_model_t::clear_metatiles()
     metatile_bitmaps.clear();
 }
 
-void level_model_t::refresh_metatiles(metatile_model_t const& metatiles, chr_array_t const& chr, palette_array_t const& palette)
+void level_model_t::refresh_metatiles(
+    metatile_model_t const& metatiles, chr_array_t const& chr, 
+    std::vector<wxBitmap> const* collision_bitmaps, palette_array_t const& palette)
 {
     auto chr_bitmaps = chr_to_bitmaps(chr.data(), chr.size(), palette.data());
 
@@ -310,6 +312,13 @@ void level_model_t::refresh_metatiles(metatile_model_t const& metatiles, chr_arr
                 }
             }
 
+            if(collision_bitmaps)
+            {
+                unsigned const tile = metatiles.collision_layer.tiles.at(c);
+                if(tile < collision_bitmaps->size())
+                    dc.DrawBitmap((*collision_bitmaps)[tile], { 0, 0 }, false);
+            }
+
             if(i >= metatiles.num)
             {
                 dc.SetPen(wxPen(wxColor(255, 0, 0), 2, wxPENSTYLE_SOLID));
@@ -327,29 +336,6 @@ void level_model_t::refresh_metatiles(metatile_model_t const& metatiles, chr_arr
         ++i;
     }
 }
-
-/* TODO
-void level_model_t::reindex_objects()
-{
-    std::unordered_map<std::string, std::vector<object_t*>> map;
-
-    for(object_t& o : objects)
-        map[o.oclass].push_back(&o);
-
-    for(auto& pair : map)
-    {
-        auto& vec = pair.second;
-        std::stable_sort(vec.begin(), vec.end(), [&](object_t* a, object_t& b)
-        {
-            return a->index < b->index;
-        });
-
-        unsigned index = 0;
-        for(object_t* o : vec)
-            o->index = ++index;
-    }
-}
-*/
 
 ////////////////////////////////////////////////////////////////////////////////
 // model_t /////////////////////////////////////////////////////////////////////
@@ -585,7 +571,9 @@ void model_t::read_file(FILE* fp, std::filesystem::path base_path)
 
     // Collision file:
     collision_path = get_path();
-    collision_bitmaps = load_collision_file(collision_path.string());
+    auto collisions = load_collision_file(collision_path.string());
+    collision_bitmaps = std::move(collisions.first);
+    collision_wx_bitmaps = std::move(collisions.second);
 
     // CHR:
     unsigned const num_chr = get8(true);
@@ -624,17 +612,20 @@ void model_t::read_file(FILE* fp, std::filesystem::path base_path)
 
     // Object classes:
     unsigned const num_oc = get8(true);
-    for(auto const& oc : object_classes)
+    object_classes.clear();
+    for(unsigned i = 0; i < num_oc; ++i)
     {
-        oc->name = get_str();
-        oc->color.r = get8();
-        oc->color.g = get8();
-        oc->color.b = get8();
+        auto& oc = *object_classes.emplace_back(std::make_shared<object_class_t>());
+
+        oc.name = get_str();
+        oc.color.r = get8();
+        oc.color.g = get8();
+        oc.color.b = get8();
         unsigned const num_fields = get8();
-        oc->fields.clear();
+        oc.fields.clear();
         for(unsigned i = 0; i < num_fields; ++i)
         {
-            auto& field = oc->fields.emplace_back();
+            auto& field = oc.fields.emplace_back();
             field.name = get_str();
             field.type = get_str();
         }
@@ -671,6 +662,303 @@ void model_t::read_file(FILE* fp, std::filesystem::path base_path)
                     for(auto const& field : oc->fields)
                         obj.fields.emplace(field.name, get_str());
                     break;
+                }
+            }
+        }
+    }
+
+    modified = modified_since_save = false;
+}
+
+void model_t::write_json(FILE* fp, std::filesystem::path base_path) const
+{
+    base_path.remove_filename();
+
+    json data;
+
+    data["version"] = SAVE_VERSION;
+
+    // Collision file:
+    data["collision_path"] = std::filesystem::proximate(collision_path, base_path).generic_string();
+
+    // CHR:
+    {
+        json::array_t chr;
+        for(auto const& file : chr_files)
+        {
+            std::string path = std::filesystem::proximate(file.path, base_path).generic_string();
+            chr.push_back(json::object({{"name", file.name}, {"path",  std::move(path) } }));
+        }
+        data["chr"] = std::move(chr);
+    }
+
+    // Palettes:
+    {
+        json::array_t palettes;
+        for(std::uint8_t data : palette.color_layer.tiles)
+            palettes.push_back(data);
+
+        data["palettes"] = json::object({
+            {"num", palette.num },
+            {"data", std::move(palettes) },
+        });
+    }
+
+    // Metatiles:
+    {
+        json::array_t mt_sets;
+
+        for(auto const& mt : metatiles)
+        {
+            json::array_t tiles;
+            json::array_t attributes;
+            json::array_t collisions;
+
+            for(std::uint8_t data : mt->chr_layer.tiles)
+                tiles.push_back(data);
+            for(std::uint8_t data : mt->chr_layer.attributes)
+                attributes.push_back(data);
+            for(std::uint8_t data : mt->collision_layer.tiles)
+                collisions.push_back(data);
+
+            mt_sets.push_back(json::object({
+                {"name", mt->name},
+                {"chr", mt->chr_name},
+                {"palette", mt->palette},
+                {"num", mt->num},
+                {"tiles", std::move(tiles)},
+                {"attributes", std::move(attributes)},
+                {"collisions", std::move(collisions)},
+            }));
+        }
+
+        data["metatile_sets"] = std::move(mt_sets);
+    }
+
+    // Object classes:
+    {
+        json::array_t ocs;
+
+        for(auto const& oc : object_classes)
+        {
+            json::array_t fields;
+
+            for(auto const& field : oc->fields)
+            {
+                fields.push_back(json::object({
+                    {"name", field.name},
+                    {"type", field.type},
+                }));
+            }
+
+            ocs.push_back(json::object({
+                {"name", oc->name},
+                {"color", json::array({ oc->color.r, oc->color.g, oc->color.b })},
+                {"fields", std::move(fields)},
+            }));
+        }
+
+        data["object_classes"] = std::move(ocs);
+    }
+
+    {
+        json::array_t levels;
+
+        for(auto const& level : this->levels)
+        {
+            json::array_t tiles;
+            for(std::uint8_t data : level->metatile_layer.tiles)
+                tiles.push_back(data);
+
+            json::array_t objects;
+            for(auto const& obj : level->objects)
+            {
+                json::object_t fields;
+
+                for(auto const& oc : object_classes)
+                {
+                    if(oc->name == obj.oclass)
+                    {
+                        for(auto const& field : oc->fields)
+                        {
+                            auto it = obj.fields.find(field.name);
+                            if(it != obj.fields.end())
+                                fields[field.name] = it->second;
+                        }
+                        break;
+                    }
+                }
+
+                objects.push_back(json::object({
+                    {"name", obj.name},
+                    {"object_class", obj.oclass},
+                    {"fields", std::move(fields)},
+                    {"x", obj.position.x},
+                    {"y", obj.position.y},
+                }));
+            }
+
+            levels.push_back(json::object({
+                {"name", level->name},
+                {"macro", level->macro_name},
+                {"chr", level->chr_name},
+                {"palette", level->palette},
+                {"metatile_set", level->metatiles_name},
+                {"width", level->dimen().w},
+                {"height", level->dimen().h},
+                {"tiles", std::move(tiles)},
+                {"objects", std::move(objects)},
+            }));
+        }
+
+        data["levels"] = std::move(levels);
+    }
+
+    std::string str = data.dump(2);
+    std::fwrite(str.data(), str.size(), 1, fp);
+}
+
+void model_t::read_json(FILE* fp, std::filesystem::path base_path)
+{
+    auto const convert_path = [&](std::string const& str) -> std::filesystem::path
+    {
+        std::filesystem::path path(str, std::filesystem::path::generic_format);
+        path.make_preferred();
+
+        if(!path.empty() && path.is_relative())
+            path = base_path / path;
+
+        return path;
+    };
+
+    json data = json::parse(fp);
+
+    base_path.remove_filename();
+
+    if(data.at("version") > SAVE_VERSION)
+        throw std::runtime_error("File is from a newer version of MapFab.");
+
+    // Collision file:
+    collision_path = convert_path(data.at("collision_path").get<std::string>());
+    auto collisions = load_collision_file(collision_path.string());
+    collision_bitmaps = std::move(collisions.first);
+    collision_wx_bitmaps = std::move(collisions.second);
+
+    // CHR:
+    chr_files.clear();
+    for(auto const& v : data.at("chr").get<json::array_t>())
+    {
+        auto& chr = chr_files.emplace_back();
+        chr.name = v.at("name").get<std::string>();
+        chr.path = convert_path(v.at("path").get<std::string>());
+        chr.load();
+    }
+
+    // Palettes:
+    {
+        auto const& array = data.at("palettes").at("data").get<json::array_t>();
+        palette.num = data.at("palettes").at("num").get<int>();
+
+        unsigned i = 0;
+        for(std::uint8_t& v : palette.color_layer.tiles)
+            v = array.at(i++).get<int>();
+    }
+
+    // Metatiles:
+    {
+        metatiles.clear();
+
+        auto const& array = data.at("metatile_sets").get<json::array_t>();
+        for(auto const& mt_set : array)
+        {
+            auto& mt = *metatiles.emplace_back(std::make_shared<metatile_model_t>());
+            mt.name = mt_set.at("name").get<std::string>();
+            mt.chr_name = mt_set.at("chr").get<std::string>();
+            mt.palette = mt_set.at("palette").get<int>();
+            mt.num = mt_set.at("num").get<int>();
+
+            auto const& tiles = mt_set.at("tiles").get<json::array_t>();
+            auto const& attributes = mt_set.at("attributes").get<json::array_t>();
+            auto const& collisions = mt_set.at("collisions").get<json::array_t>();
+
+            unsigned i = 0;
+            for(std::uint8_t& v : mt.chr_layer.tiles)
+                v = tiles.at(i++).get<int>();
+
+            i = 0;
+            for(std::uint8_t& v : mt.chr_layer.attributes)
+                v = attributes.at(i++).get<int>();
+
+            i = 0;
+            for(std::uint8_t& v : mt.collision_layer.tiles)
+                v = collisions.at(i++).get<int>();
+        }
+    }
+
+    // Object classes:
+    {
+        object_classes.clear();
+        auto const& array = data.at("object_classes").get<json::array_t>();
+        for(auto const& o : array)
+        {
+            auto& oc = *object_classes.emplace_back(std::make_shared<object_class_t>());
+
+            oc.name = o.at("name").get<std::string>();
+            oc.color.r = o.at("color").at(0).get<int>();
+            oc.color.g = o.at("color").at(1).get<int>();
+            oc.color.b = o.at("color").at(2).get<int>();
+
+            auto const& fields = o.at("fields").get<json::array_t>();
+            for(auto const& f : fields)
+            {
+                auto& field = oc.fields.emplace_back();
+                field.name = f.at("name").get<std::string>();
+                field.type = f.at("type").get<std::string>();
+            }
+        }
+    }
+
+    // Levels:
+    {
+        levels.clear();
+        auto const& array = data.at("levels").get<json::array_t>();
+        for(auto const& l : array)
+        {
+            auto& level = *levels.emplace_back(std::make_shared<level_model_t>());
+
+            level.name = l.at("name").get<std::string>();
+            level.macro_name = l.at("macro").get<std::string>();
+            level.chr_name = l.at("chr").get<std::string>();
+            level.palette = l.at("palette").get<int>();
+            level.metatiles_name = l.at("metatile_set").get<std::string>();
+
+            unsigned const w = l.at("width").get<int>();
+            unsigned const h = l.at("height").get<int>();
+            level.metatile_layer.tiles.resize({ w, h });
+
+            auto const& tiles = l.at("tiles").get<json::array_t>();
+            unsigned i = 0;
+            for(std::uint8_t& data : level.metatile_layer.tiles)
+                data = tiles.at(i++);
+
+            auto const& objects = l.at("objects").get<json::array_t>();
+            for(auto const& o : objects)
+            {
+                auto& obj = level.objects.emplace_back();
+
+                obj.name = o.at("name").get<std::string>();
+                obj.oclass = o.at("object_class").get<std::string>();
+                obj.position.x = o.at("x").get<int>();
+                obj.position.y = o.at("y").get<int>();
+
+                for(auto const& oc : object_classes)
+                {
+                    if(oc->name == obj.oclass)
+                    {
+                        for(auto const& field : oc->fields)
+                            obj.fields.emplace(field.name, o.at("fields").at(field.name).get<std::string>());
+                        break;
+                    }
                 }
             }
         }

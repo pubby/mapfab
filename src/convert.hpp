@@ -48,7 +48,7 @@ attr_gc_bitmaps_t convert_bitmap(attr_bitmaps_t const&);
 
 std::vector<attr_bitmaps_t> chr_to_bitmaps(std::uint8_t const* data, std::size_t size, std::uint8_t const* palette);
 
-std::vector<bitmap_t> load_collision_file(wxString const& string);
+std::pair<std::vector<bitmap_t>, std::vector<wxBitmap>> load_collision_file(wxString const& string);
 
 std::vector<std::uint8_t> png_to_chr(std::uint8_t const* png, std::size_t size, bool chr16);
 

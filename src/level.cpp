@@ -281,15 +281,21 @@ void level_canvas_t::draw_tiles(render_t& gc)
     int const y0 = margin().h;
     int const y1 = margin().h + level->metatile_layer.tiles.dimen().h * 16;
 
+    int x_lines = model.level_grid_x ? model.level_grid_x : 16;
     int y_lines = 0;
-    if(level->metatile_layer.tiles.dimen().h % 16 == 0)
-        y_lines = 16;
-    else if(level->metatile_layer.tiles.dimen().h % 15 == 0)
-        y_lines = 15;
-
-    for(unsigned x = 1; x < (level->metatile_layer.tiles.dimen().w + 15) / 16; ++x)
+    if(model.level_grid_y)
+        y_lines = model.level_grid_y;
+    else
     {
-        int const x0 = x * 256 + margin().w;
+        if(level->metatile_layer.tiles.dimen().h % 16 == 0)
+            y_lines = 16;
+        else if(level->metatile_layer.tiles.dimen().h % 15 == 0)
+            y_lines = 15;
+    }
+
+    for(unsigned x = 1; x < (level->metatile_layer.tiles.dimen().w + x_lines - 1) / x_lines; ++x)
+    {
+        int const x0 = x * (16 * x_lines) + margin().w;
         draw_line(gc, x0, y0, x0, y1);
     }
 
@@ -848,7 +854,11 @@ void level_editor_t::load_metatiles()
     auto* chr_file = lookup_name(level->chr_name, model.chr_files);
     auto* metatiles = lookup_name_ptr(level->metatiles_name, model.metatiles).get();
     if(chr_file && metatiles)
-        level->refresh_metatiles(*metatiles, chr_file->chr, model.palette_array(level->palette));
+    {
+        level->refresh_metatiles(*metatiles, chr_file->chr, 
+                                 model.show_collisions ? &model.collision_wx_bitmaps : nullptr, 
+                                 model.palette_array(level->palette));
+    }
     else
         level->clear_metatiles();
     Refresh();
@@ -980,4 +990,21 @@ tile_copy_t level_editor_t::copy(bool cut)
     }
     else
         return editor_t::copy(cut);
+}
+
+void level_editor_t::select_all(bool select) 
+{
+    if(level->current_layer == OBJECT_LAYER)
+    {
+        if(select)
+        {
+            for(unsigned i = 0; i < level->objects.size(); ++i)
+                level->object_selector.insert(i);
+        }
+        else
+            level->object_selector.clear();
+        Refresh();
+    }
+    else
+        return editor_t::select_all(select);
 }

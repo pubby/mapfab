@@ -392,7 +392,9 @@ public:
     }
 
     void clear_metatiles();
-    void refresh_metatiles(metatile_model_t const& metatiles, chr_array_t const& chr, palette_array_t const& palette);
+    void refresh_metatiles(
+        metatile_model_t const& metatiles, chr_array_t const& chr, 
+        std::vector<wxBitmap> const* collision_bitmaps, palette_array_t const& palette);
 
     void reindex_objects();
 
@@ -427,6 +429,12 @@ struct model_t
     bool modified_since_save = false;
     void modify() { modified = modified_since_save = true; }
 
+    bool show_collisions = false;
+    int level_grid_x = 0;
+    int level_grid_y = 0;
+
+    wxStatusBar* status_bar = nullptr;
+
     std::filesystem::path project_path;
 
     tool_t tool = {};
@@ -443,6 +451,7 @@ struct model_t
 
     std::filesystem::path collision_path;
     std::vector<bitmap_t> collision_bitmaps;
+    std::vector<wxBitmap> collision_wx_bitmaps;
 
     palette_array_t palette_array(unsigned palette_index = 0);
 
@@ -458,6 +467,9 @@ struct model_t
 
     void write_file(FILE* fp, std::filesystem::path base_path) const;
     void read_file(FILE* fp, std::filesystem::path base_path);
+
+    void write_json(FILE* fp, std::filesystem::path base_path) const;
+    void read_json(FILE* fp, std::filesystem::path base_path);
 };
 
 struct undo_history_t

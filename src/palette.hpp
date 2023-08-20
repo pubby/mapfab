@@ -21,13 +21,10 @@ class color_picker_t : public selector_box_t
 {
 public:
     color_picker_t(wxWindow* parent, model_t& model)
-    : selector_box_t(parent)
-    , model(model)
+    : selector_box_t(parent, model)
     { resize(); }
 
 protected:
-    model_t& model;
-
     virtual void draw_tile(render_t& gc, unsigned color, coord_t at) override { draw_color_tile<true>(gc, color, at); }
     virtual tile_model_t& tiles() const { return model.palette; }
 };
@@ -47,6 +44,7 @@ private:
     //virtual void post_update() override { model.refresh_chr(); } TODO
     virtual void draw_tile(render_t& gc, unsigned color, coord_t at) override { draw_color_tile<false>(gc, color, at); }
     virtual void draw_tiles(render_t& gc) override;
+    virtual int tile_code(coord_t c) override { return c.x; }
 };
 
 class palette_editor_t : public editor_t

@@ -1,6 +1,6 @@
 = MapFab
 Copyright (c) 2023, Pubby
-Version 0.1
+Version 0.2
 :sectnums:
 :toc2:
 :toclevels: 3
@@ -206,9 +206,14 @@ When using NESFab, it's recommended to name fields using `snake_case`, and avoid
 
 To add or delete object classes, use the <<tab_manager>>.
 
-== `.mapfab` File Format
+== File Formats
 
-MapFab projects are saved as `.mapfab` files, which is a binary format.
+MapFab can save projects in either a binary `.mapfab` format, or a text-based `.json` format.
+It is recommended to use a single format per project, instead of mixing both.
+
+=== `.mapfab` File Format
+
+`.mapfab` files are a binary format.
 Data is packed into the file using one of three types:
 
 - `byte`: an 8-bit integer.
@@ -229,8 +234,7 @@ The format is defined as follows:
 .. *`string` CHR Name* - The name of the CHR file.
 .. *`string` CHR Tileset Path* - The path of the CHR tileset, relative to the `.mapfab` file.
 . *`byte` Palette Count* - The number of palettes. A value of 0 should be treated as 256.
-. *For each Palette Count:*
-.. *`byte[25]` Palette* - The palette's colors from left to right.
+. *`byte[6400]` Palette* - Palette colors from left-to-right, top-to-bottom.
 . *`byte` Metatile Set Count* - The number of metatile sets. A value of 0 should be treated as 256.
 . *For each Metatile Set Count:*
 .. *`string` Metatile Set Name* - The name of the metatile set.
@@ -265,3 +269,45 @@ The format is defined as follows:
 ... *`short` Object Class X-Position* - The X-position of the object.
 ... *`short` Object Class Y-Position* - The Y-position of the object.
 ... *`string[Object Class Field Count]` Object Fields* - The field values of the object, matching the order of the object class's fields.
+
+=== `.json` File Format
+
+When saving as https://en.wikipedia.org/wiki/JSON[JSON], the following schema is used:
+
+. *version* - The current `.json` format version (currently 1).
+. *collision_path* - The path of the collision tileset, relative to the `.json` file.
+. *chr* - An array of JSON objects defining the CHR:
+.. *name* - The name of the CHR file.
+.. *path* - The path of the CHR tileset, relative to the `.json` file.
+. *palettes* - An object:
+.. *num* - The number of palettes.
+.. *data* - An array of size 6400 defining the palette colors from left-to-right, top-to-bottom.
+. *metatile_sets* - An array of JSON objects defining the metatile sets:
+.. *name* - The name of the metatile set.
+.. *chr* - The name of the metatile set's display CHR.
+.. *palette* - The index of the metatile set's display palette.
+.. *num* - The number of metatiles in this set.
+.. *tiles* - An array of size 1024, defining the tiles of the metatile set, left-to-right, to-to-bottom.
+.. *attributes* - An array of size 256, definining the attributes of the metatile set, left-to-right, top-to-bottom.
+.. *collisions* - An array of size 256, definining the collisions of the metatile set, left-to-right, top-to-bottom.
+. *object_classes* - An array of JSON objects defining the object classes:
+.. *name* - The name of the object class.
+.. *color* - An array of size 3, defining the the RGB components of the object class's color.
+.. *fields* - An array of JSON objects defining the object class's fields:
+... *name* - The name of the field.
+... *type* - The type of the field.
+. *levels* - An array of JSON objects defining the levels:
+.. *name* - The name of the level.
+.. *macro* - The level's macro string.
+.. *chr* - The name of the level's CHR data.
+.. *palette* - The index of the level's palette.
+.. *metatile_set* - The name of the level's metatile set data.
+.. *width* - The width of the level, in metatiles.
+.. *height* - The height of the level, in metatiles.
+.. *tiles* - An array of size width*height, defining the metatiles of the level, left-to-right, top-to-bottom.
+.. *objects* - An array of JSON objects, defining the level's objects:
+... *name* - The name of the object.
+... *object_class* - The name of the object's object class.
+... *x* - The X-position of the object.
+... *y* - The Y-position of the object.
+... *fields* - A JSON object, defining the object's fields. Each member of the JSON object corresponds to a field in the object's class.

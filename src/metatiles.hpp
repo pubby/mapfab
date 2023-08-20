@@ -20,13 +20,11 @@ class chr_picker_t : public selector_box_t
 {
 public:
     chr_picker_t(wxWindow* parent, model_t& model, std::shared_ptr<metatile_model_t> metatiles)
-    : selector_box_t(parent)
-    , model(model)
+    : selector_box_t(parent, model)
     , metatiles(std::move(metatiles))
     { resize(); }
 
 private:
-    model_t& model;
     std::shared_ptr<metatile_model_t> metatiles;
 
     virtual tile_model_t& tiles() const override { return *metatiles; }
@@ -46,6 +44,12 @@ private:
     virtual tile_model_t& tiles() const { return *metatiles; }
     virtual dimen_t margin() const override { return { 16, 16 }; }
     virtual void post_update() override { } // TODO
+    virtual int tile_code(coord_t c) override 
+    { 
+        if(metatiles->collisions())
+            return c.x + c.y * 16;
+        return (c.x / 2) + (c.y / 2) * 16; 
+    }
 
     virtual void draw_tiles(render_t& gc) override;
 };

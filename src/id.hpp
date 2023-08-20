@@ -29,6 +29,10 @@ enum
     ID_TOOL_SELECT,
     ID_DELETE_OBJ,
     ID_MANAGE_TABS,
+    ID_SHOW_COLLISIONS,
+    ID_LEVEL_GRID,
+    ID_SELECT_ALL,
+    ID_SELECT_NONE,
 };
 
 #endif

@@ -66,7 +66,7 @@ void metatile_canvas_t::draw_tiles(render_t& gc)
         int x0 = c.x * 16 + margin().w;
         int y0 = c.y * 16 + margin().h;
 
-        if(metatiles->collisions())
+        if(metatiles->collisions() || model.show_collisions)
         {
             unsigned const tile = metatiles->collision_layer.tiles.at(c);
             draw_collision_tile(model, gc, tile, { x0, y0 });

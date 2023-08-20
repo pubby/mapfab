@@ -70,8 +70,7 @@ class metatile_picker_t : public selector_box_t
 {
 public:
     metatile_picker_t(wxWindow* parent, model_t& model, std::shared_ptr<level_model_t> level)
-    : selector_box_t(parent)
-    , model(model)
+    : selector_box_t(parent, model)
     , level(level)
     {
         scale = 1;
@@ -79,7 +78,6 @@ public:
     }
 
 private:
-    model_t& model;
     std::shared_ptr<level_model_t> level;
 
     virtual tile_model_t& tiles() const override { return *level; }
@@ -176,6 +174,8 @@ private:
     template<unsigned I>
     void on_active(wxCommandEvent& event) { on_active(I); }
     void on_active(unsigned i);
+
+    virtual void select_all(bool select = true) override;
 public:
     void model_refresh();
     void load_metatiles();

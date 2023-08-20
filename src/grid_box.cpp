@@ -234,6 +234,12 @@ void selector_box_t::on_up(mouse_button_t mb, coord_t mouse_end)
 
 void selector_box_t::on_motion(coord_t at)
 {
+    std::stringstream status;
+    auto c = from_screen(mouse_current);
+    if(in_bounds(c, grid_dimen))
+        status << "{$" << std::hex << (tile_value(c) & 0xFF) << std::dec << "}";
+    model.status_bar->SetStatusText(status.str());
+
     if(!enable_tile_select())
         return;
 
@@ -338,6 +344,27 @@ void canvas_box_t::on_up(mouse_button_t mb, coord_t mouse_end)
     Refresh();
 }
 
+void canvas_box_t::on_motion(coord_t at) 
+{
+    grid_box_t::on_motion(at);
+
+    std::stringstream status;
+    auto c = from_screen(mouse_current);
+    if(in_bounds(c, grid_dimen))
+    {
+        status << "{$" << std::hex << (tile_value(c) & 0xFF) << std::dec << "}";
+        while(status.str().size() < 6)
+            status << ' ';
+        status << "(" << c.x << ", " << c.y << ") ";
+        while(status.str().size() < 17)
+            status << ' ';
+        status << "[$" << std::hex << tile_code(c) << std::dec << "]";
+    }
+    model.status_bar->SetStatusText(status.str());
+
+    Refresh();
+}
+
 void canvas_box_t::draw_tiles(render_t& gc)
 {
     draw_underlays(gc);
@@ -431,4 +458,10 @@ tile_copy_t editor_t::copy(bool cut)
 
     Refresh();
     return ret;
+}
+
+void editor_t::select_all(bool select)
+{
+    canvas_box().selector().select_all(select);
+    Refresh();
 }

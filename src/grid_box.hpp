@@ -280,8 +280,9 @@ protected:
 class selector_box_t : public grid_box_t
 {
 public:
-    explicit selector_box_t(wxWindow* parent, bool can_zoom = false) 
+    explicit selector_box_t(wxWindow* parent, model_t& model, bool can_zoom = false) 
     : grid_box_t(parent, can_zoom) 
+    , model(model)
     {}
 
     virtual tile_model_t& tiles() const = 0;
@@ -295,6 +296,7 @@ public:
     virtual bool enable_tile_select() const { return true; }
 
 protected:
+    model_t& model;
 
     coord_t mouse_start = {};
 
@@ -303,6 +305,7 @@ protected:
     virtual void on_down(mouse_button_t mb, coord_t at) override { mouse_start = at; }
     virtual void on_up(mouse_button_t mb, coord_t mouse_end) override;
     virtual void on_motion(coord_t at) override;
+    virtual int tile_value(coord_t at) { return tiles().layer().to_tile(at); }
 
     virtual void draw_tile(render_t& gc, unsigned tile, coord_t at) {}
     virtual void draw_tiles(render_t& gc) override;
@@ -312,8 +315,7 @@ class canvas_box_t : public selector_box_t
 {
 public:
     canvas_box_t(wxWindow* parent, model_t& model) 
-    : selector_box_t(parent, true) 
-    , model(model)
+    : selector_box_t(parent, model, true) 
     {}
 
     void on_draw(render_t& gc) override
@@ -325,19 +327,19 @@ public:
     }
 
     virtual void resize() override { grid_resize(layer().canvas_dimen()); }
+    virtual select_map_t& selector() const override { return layer().canvas_selector; }
 
 protected:
-    model_t& model;
-
     bool pasting() const { return model.paste && model.paste->format == layer().format(); }
 
-    virtual select_map_t& selector() const override { return layer().canvas_selector; }
 
     virtual void post_update() {}
 
     virtual void on_down(mouse_button_t mb, coord_t at) override;
     virtual void on_up(mouse_button_t mb, coord_t mouse_end) override;
-    virtual void on_motion(coord_t at) override { Refresh(); }
+    virtual void on_motion(coord_t at) override;
+    virtual int tile_code(coord_t at) { return at.x + at.y * grid_dimen.w; }
+    virtual int tile_value(coord_t at) { return layer().get(at); }
 
     virtual void draw_tile(render_t& gc, unsigned tile, coord_t at) {}
     virtual void draw_tiles(render_t& gc) override;
@@ -359,6 +361,7 @@ public:
     auto& layer() { return canvas_box().layer(); }
 
     virtual tile_copy_t copy(bool cut);
+    virtual void select_all(bool select = true);
 };
 
 class base_tab_panel_t : public wxPanel
