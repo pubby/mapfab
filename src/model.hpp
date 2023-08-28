@@ -327,6 +327,7 @@ public:
     virtual unsigned format() const override { return LAYER_CHR; }
     virtual std::uint16_t get(coord_t c) const override { return tiles.at(c) | attributes.at(vec_div(c, 2)) << 8; }
     virtual void set(coord_t c, std::uint16_t value) override { tiles.at(c) = value; attributes.at(vec_div(c, 2)) = value >> 8; }
+    virtual void reset(coord_t c) { tiles.at(c) = 0; }
     virtual std::uint16_t to_tile(coord_t pick) const { return tile_layer_t::to_tile(pick) | (active << 8); }
 
     undo_t fill_attribute();
