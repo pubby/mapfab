@@ -642,7 +642,7 @@ void model_t::read_file(FILE* fp, std::filesystem::path base_path)
         level.chr_name = get_str();
         level.palette = get8();
         level.metatiles_name = get_str();
-        level.metatile_layer.tiles.resize({ get8(true), get8(true) });
+        level.resize({get8(true), get8(true) });
         for(std::uint8_t& data : level.metatile_layer.tiles)
             data = get8();
         unsigned const num_objects = get16();
@@ -934,7 +934,7 @@ void model_t::read_json(FILE* fp, std::filesystem::path base_path)
 
             unsigned const w = l.at("width").get<int>();
             unsigned const h = l.at("height").get<int>();
-            level.metatile_layer.tiles.resize({ w, h });
+            level.resize({ w, h });
 
             auto const& tiles = l.at("tiles").get<json::array_t>();
             unsigned i = 0;
