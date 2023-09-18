@@ -681,10 +681,6 @@ private:
             editor->Refresh();
     }
 
-    void select_by_usage_mtt(int usage)
-    {
-    }
-
     void on_level_grid(wxCommandEvent& event)
     {
         level_grid_dialog_t dialog(this, model);
