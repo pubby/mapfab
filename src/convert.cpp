@@ -66,6 +66,8 @@ std::pair<std::vector<bitmap_t>, std::vector<wxBitmap>> load_collision_file(wxSt
         return {};
 
     std::pair<std::vector<bitmap_t>, std::vector<wxBitmap>> ret;
+
+    wxLogNull go_away;
     wxImage base(string);
     if(!base.IsOk())
         return {};

@@ -73,6 +73,28 @@ void select_map_t::select_all(bool select)
         m_select_rect = {}; 
 }
 
+void select_map_t::select_invert()
+{
+    coord_t min = { INT_MAX, INT_MAX };
+    coord_t max = { 0, 0 };
+
+    for(coord_t c : dimen_range(dimen()))
+    {
+        if((m_selection[c] = !m_selection[c]))
+        {
+            min.x = std::min(c.x, min.x);
+            min.y = std::min(c.y, min.y);
+            max.x = std::max(c.x, max.x);
+            max.y = std::max(c.y, max.y);
+        }
+    }
+
+    if(min.x > max.x || min.y > max.y)
+        m_select_rect = {};
+    else
+        m_select_rect = rect_from_2_coords(min, max);
+}
+
 void select_map_t::select(std::uint8_t tile, bool select_)
 {
     this->select(coord_t{ tile % dimen().w, tile / dimen().w }, select_);

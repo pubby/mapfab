@@ -33,6 +33,8 @@ enum
     ID_LEVEL_GRID,
     ID_SELECT_ALL,
     ID_SELECT_NONE,
+    ID_SELECT_USAGE,
+    ID_SELECT_INVERT,
 };
 
 #endif

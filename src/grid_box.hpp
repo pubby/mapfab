@@ -362,6 +362,7 @@ public:
 
     virtual tile_copy_t copy(bool cut);
     virtual void select_all(bool select = true);
+    virtual void select_invert();
 };
 
 class base_tab_panel_t : public wxPanel

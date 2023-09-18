@@ -465,3 +465,9 @@ void editor_t::select_all(bool select)
     canvas_box().selector().select_all(select);
     Refresh();
 }
+
+void editor_t::select_invert()
+{
+    canvas_box().selector().select_invert();
+    Refresh();
+}

@@ -1008,3 +1008,21 @@ void level_editor_t::select_all(bool select)
     else
         return editor_t::select_all(select);
 }
+
+void level_editor_t::select_invert()
+{
+    if(level->current_layer == OBJECT_LAYER)
+    {
+        decltype(level->object_selector) new_selector;
+
+        for(unsigned i = 0; i < level->objects.size(); ++i)
+            if(level->object_selector.count(i) == 0)
+                new_selector.insert(i);
+
+        level->object_selector = std::move(new_selector);
+
+        Refresh();
+    }
+    else
+        return editor_t::select_invert();
+}

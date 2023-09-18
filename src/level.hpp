@@ -176,6 +176,7 @@ private:
     void on_active(unsigned i);
 
     virtual void select_all(bool select = true) override;
+    virtual void select_invert() override;
 public:
     void model_refresh();
     void load_metatiles();

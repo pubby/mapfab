@@ -8,6 +8,7 @@
 
 #include <filesystem>
 #include <cstring>
+#include <map>
 
 #include "2d/geometry.hpp"
 
@@ -87,6 +88,81 @@ private:
     void on_change_y(wxSpinEvent& event)
     {
         model.level_grid_y = event.GetPosition(); 
+    }
+};
+
+class usage_dialog_t : public wxDialog
+{
+public:
+    usage_dialog_t(wxWindow* parent, model_t& model)
+    : wxDialog(parent, wxID_ANY, "Select by Usage")
+    , model(model)
+    {
+        wxBoxSizer* main_sizer = new wxBoxSizer(wxVERTICAL);
+
+        wxStaticText* label = new wxStaticText(this, wxID_ANY, "Rarely used tiles will be selected.");
+        main_sizer->Add(label, 0, wxALL, 2);
+        main_sizer->AddSpacer(8);
+
+        wxPanel* panel = new wxPanel(this);
+        {
+            wxBoxSizer* sizer = new wxBoxSizer(wxHORIZONTAL);
+
+            wxStaticText* usage_label = new wxStaticText(panel, wxID_ANY, "Maximum Usage:");
+            usage_ctrl= new wxSpinCtrl(panel);
+            usage_ctrl->SetRange(0, 256*256);
+            usage_ctrl->SetValue(usage);
+            sizer->Add(usage_label, 0, wxALL | wxCENTER, 2);
+            sizer->Add(usage_ctrl, 0, wxALL | wxCENTER, 2);
+            sizer->AddSpacer(16);
+
+            mtt_ctrl = new wxCheckBox(panel, wxID_ANY, "32x32 Mode");
+            mtt_ctrl->SetValue(mtt);
+            sizer->Add(mtt_ctrl, 0, wxALL | wxCENTER, 2);
+
+            panel->SetSizer(sizer);
+        }
+        main_sizer->Add(panel, 0, wxALL, 2);
+        main_sizer->AddSpacer(8);
+
+        wxPanel* button_panel = new wxPanel(this);
+        {
+            wxBoxSizer* sizer = new wxBoxSizer(wxHORIZONTAL);
+
+            wxButton* ok_button = new wxButton(button_panel, wxID_OK, "Ok");
+            sizer->Add(ok_button, 0, wxALL | wxALIGN_CENTER, 2);
+            sizer->AddSpacer(16);
+            wxButton* cancel_button = new wxButton(button_panel, wxID_OK, "Cancel");
+            sizer->Add(cancel_button, 0, wxALL | wxALIGN_CENTER, 2);
+
+            button_panel->SetSizer(sizer);
+        }
+        main_sizer->Add(button_panel, 0, wxALL | wxALIGN_CENTER, 2);
+
+        usage_ctrl->Bind(wxEVT_SPINCTRL, &usage_dialog_t::on_change_usage, this);
+        mtt_ctrl->Bind(wxEVT_CHECKBOX, &usage_dialog_t::on_change_mtt, this);
+
+        SetSizerAndFit(main_sizer);
+    }
+
+public:
+    int usage = 0;
+    bool mtt = false;
+
+private:
+    model_t& model;
+
+    wxSpinCtrl* usage_ctrl;
+    wxCheckBox* mtt_ctrl;
+
+    void on_change_usage(wxSpinEvent& event)
+    {
+        usage = event.GetPosition(); 
+    }
+
+    void on_change_mtt(wxCommandEvent& event)
+    {
+        mtt = event.GetInt();
     }
 };
  
@@ -205,6 +281,8 @@ private:
             fill_attribute->Enable(can_fill && notebook->GetSelection() == TAB_METATILES);
             select_all->Enable(true);
             select_none->Enable(true);
+            select_invert->Enable(true);
+            select_usage->Enable(true);
         }
         else
         {
@@ -215,6 +293,8 @@ private:
             fill_attribute->Enable(false);
             select_all->Enable(false);
             select_none->Enable(false);
+            select_invert->Enable(false);
+            select_usage->Enable(false);
         }
 
         for(auto* item : zoom)
@@ -248,11 +328,26 @@ private:
 
         if(event.GetChangeType() == wxFSW_EVENT_MODIFY)
         {
-            auto bm = load_collision_file(model.collision_path.string());
-            model.collision_bitmaps = std::move(bm.first);
-            model.collision_wx_bitmaps = std::move(bm.second);
+            try
+            {
+                if(std::filesystem::exists(model.collision_path))
+                {
+                    auto bm = load_collision_file(model.collision_path.string());
+                    model.collision_bitmaps = std::move(bm.first);
+                    model.collision_wx_bitmaps = std::move(bm.second);
+                }
+            }
+            catch(...) {}
+
             for(auto& chr : model.chr_files)
-                chr.load();
+            {
+                try
+                {
+                    chr.load();
+                }
+                catch(...) {}
+            }
+
             refresh_tab();
         }
     }
@@ -390,16 +485,204 @@ private:
         }
     }
 
-    template<bool Select>
-    void on_select_all(wxCommandEvent& event)
+    void enable_select()
     {
         model.tool = TOOL_SELECT;
         for(auto* tool : tools)
             tool->Toggle(false);
         tool_bar->ToggleTool(ID_TOOL_SELECT, true);
         tool_bar->Refresh();
+    }
+
+    template<bool Select>
+    void on_select_all(wxCommandEvent& event)
+    {
+        enable_select();
         if(editor_t* editor = get_editor())
             editor->select_all(Select);
+    }
+
+    void on_select_invert(wxCommandEvent& event)
+    {
+        enable_select();
+        if(editor_t* editor = get_editor())
+            editor->select_invert();
+    }
+
+    void on_select_usage(wxCommandEvent& event)
+    {
+        usage_dialog_t dialog(this, model);
+        if(dialog.ShowModal() == wxID_OK)
+        {
+            enable_select();
+            select_by_usage(dialog.usage, dialog.mtt);
+        }
+    }
+
+    void select_by_usage(int usage, bool mtt)
+    {
+        // Palette
+        std::array<int, 64> color_map = {};
+        std::array<std::array<int, 4>, 256> palette_map = {};
+        model.palette.color_layer.picker_selector.select_all(false);
+        model.palette.color_layer.canvas_selector.select_all(false);
+
+        for(unsigned y = 0; y < model.palette.num; ++y)
+        for(unsigned x = 0; x < 12; ++x)
+            color_map[model.palette.color_layer.tiles[coord_t{ x, y }]] += 1;
+
+        for(unsigned i = 0; i < 64; ++i)
+            if(color_map[i] <= usage)
+                model.palette.color_layer.picker_selector.select(coord_t{ i % 4, i / 4 });
+
+        for(auto const& mt : model.metatiles)
+        {
+            auto& map = palette_map[mt->palette];
+            for(std::uint8_t a : mt->chr_layer.attributes)
+                map[a] += 1;
+        }
+
+        for(unsigned y = 0; y < model.palette.num; ++y)
+        for(unsigned x = 0; x < 4; ++x)
+        {
+            if(palette_map[y][x] <= usage)
+                for(unsigned i = 0; i < 3; ++i)
+                    model.palette.color_layer.canvas_selector.select(coord_t{ x*3 + i , y });
+        }
+
+        // CHR
+        std::map<std::string, std::array<int, 256>> chr_map;
+        for(auto const& mt : model.metatiles)
+        {
+            auto& map = chr_map[mt->chr_name];
+            for(std::uint8_t t : mt->chr_layer.tiles)
+                map[t] += 1;
+        }
+
+        for(auto const& mt : model.metatiles)
+        {
+            auto& map = chr_map[mt->chr_name];
+            mt->chr_layer.picker_selector.select_all(false);
+            for(unsigned i = 0; i < 256; ++i)
+                if(map[i] <= usage)
+                    mt->chr_layer.picker_selector.select(coord_t{ i % 16, i / 16 });
+        }
+
+        std::map<std::string, std::array<int, 256>> mt_map;
+        for(auto const& level : model.levels)
+        {
+            auto& map = mt_map[level->metatiles_name];
+            for(std::uint8_t t : level->metatile_layer.tiles)
+                map[t] += 1;
+        }
+
+        for(auto const& level : model.levels)
+        {
+            auto& map = mt_map[level->metatiles_name];
+            level->metatile_layer.canvas_selector.select_all(false);
+
+            if(!mtt)
+            {
+                for(coord_t c : dimen_range(level->metatile_layer.tiles.dimen()))
+                {
+                    std::uint8_t const t = level->metatile_layer.tiles[c];
+                    if(map[t] <= usage)
+                        level->metatile_layer.canvas_selector.select(c);
+                }
+            }
+
+            level->metatile_layer.picker_selector.select_all(false);
+            for(unsigned i = 0; i < 256; ++i)
+                if(map[i] <= usage)
+                    level->metatile_layer.picker_selector.select(coord_t{ (i % 16), (i / 16) });
+        }
+
+        for(auto const& mt : model.metatiles)
+        {
+            auto& map = mt_map[mt->name];
+            mt->chr_layer.canvas_selector.select_all(false);
+            for(unsigned i = 0; i < 256; ++i)
+            {
+                if(map[i] <= usage)
+                {
+                    for(unsigned x = 0; x < 2; ++x)
+                    for(unsigned y = 0; y < 2; ++y)
+                        mt->chr_layer.canvas_selector.select(coord_t{ (i % 16)*2 + x, (i / 16)*2+y });
+                }
+            }
+        }
+
+        // Collisions
+        std::array<int, 64> collision_map = {};
+
+        for(auto const& mt : model.metatiles)
+            for(std::uint8_t t : mt->collision_layer.tiles)
+                collision_map[t] += 1;
+
+        for(auto const& mt : model.metatiles)
+        {
+            mt->collision_layer.picker_selector.select_all(false);
+            for(unsigned i = 0; i < 64; ++i)
+                if(collision_map[i] <= usage)
+                    mt->collision_layer.picker_selector.select(coord_t{ i % 8, i / 8 });
+        }
+
+        // Metatiles
+        if(mtt)
+        {
+            using mtt_t = std::array<std::uint8_t, 4>;
+            std::map<std::string, std::map<mtt_t, int>> mtt_map;
+
+            auto const get_mtt = [&](auto const& level, unsigned x, unsigned y) -> mtt_t
+            {
+                std::uint8_t nw = 0;
+                std::uint8_t ne = 0;
+                std::uint8_t sw = 0;
+                std::uint8_t se = 0;
+
+                nw = level->metatile_layer.tiles[{ x+0, y+0 }];
+                if(x+1 < level->metatile_layer.tiles.dimen().w)
+                {
+                    ne = level->metatile_layer.tiles[{ x+1, y+0 }];
+                    if(y+1 < level->metatile_layer.tiles.dimen().h)
+                        se = level->metatile_layer.tiles[{ x+1, y+1 }];
+                }
+                if(y+1 < level->metatile_layer.tiles.dimen().h)
+                    sw = level->metatile_layer.tiles[{ x+0, y+1 }];
+
+                return {{ nw, ne, sw, se }};
+            };
+
+            for(auto const& level : model.levels)
+            {
+                auto& map = mtt_map[level->metatiles_name];
+                for(unsigned y = 0; y < level->metatile_layer.tiles.dimen().h; y += 2)
+                for(unsigned x = 0; x < level->metatile_layer.tiles.dimen().w; x += 2)
+                    map[get_mtt(level, x, y)] += 1;
+            }
+
+            for(auto const& level : model.levels)
+            {
+                auto& map = mtt_map[level->metatiles_name];
+                for(unsigned y = 0; y < level->metatile_layer.tiles.dimen().h; y += 2)
+                for(unsigned x = 0; x < level->metatile_layer.tiles.dimen().w; x += 2)
+                {
+                    if(map[get_mtt(level, x, y)] <= usage)
+                    {
+                        for(unsigned xo = 0; xo < 2; ++xo)
+                        for(unsigned yo = 0; yo < 2; ++yo)
+                            level->metatile_layer.canvas_selector.select(coord_t{ x+xo, y+yo });
+                    }
+                }
+            }
+        }
+
+        if(editor_t* editor = get_editor())
+            editor->Refresh();
+    }
+
+    void select_by_usage_mtt(int usage)
+    {
     }
 
     void on_level_grid(wxCommandEvent& event)
@@ -455,6 +738,8 @@ private:
     wxMenuItem* level_grid;
     wxMenuItem* select_all;
     wxMenuItem* select_none;
+    wxMenuItem* select_invert;
+    wxMenuItem* select_usage;
     wxToolBar* tool_bar;
     std::vector<wxToolBarToolBase*> tools;
 
@@ -495,6 +780,8 @@ frame_t::frame_t()
     menu_edit->AppendSeparator();
     select_all = menu_edit->Append(ID_SELECT_ALL, "Select All\tCTRL+A");
     select_none = menu_edit->Append(ID_SELECT_NONE, "Select None\tCTRL+SHIFT+A");
+    select_invert = menu_edit->Append(ID_SELECT_INVERT, "Invert Selection\tCTRL+I");
+    select_usage = menu_edit->Append(ID_SELECT_USAGE, "Select by Usage\tCTRL+U");
 
     wxMenu* menu_view = new wxMenu;
     manage = menu_view->Append(ID_MANAGE_TABS, "&Manage Tabs\tCTRL+T");
@@ -586,6 +873,8 @@ frame_t::frame_t()
     Bind(wxEVT_MENU, &frame_t::on_show_collisions, this, ID_SHOW_COLLISIONS);
     Bind(wxEVT_MENU, &frame_t::on_select_all<true>, this, ID_SELECT_ALL);
     Bind(wxEVT_MENU, &frame_t::on_select_all<false>, this, ID_SELECT_NONE);
+    Bind(wxEVT_MENU, &frame_t::on_select_invert, this, ID_SELECT_INVERT);
+    Bind(wxEVT_MENU, &frame_t::on_select_usage, this, ID_SELECT_USAGE);
     Bind(wxEVT_MENU, &frame_t::on_level_grid, this, ID_LEVEL_GRID);
 
     Bind(wxEVT_TOOL, &frame_t::on_tool<TOOL_STAMP>, this, ID_TOOL_STAMP);

@@ -104,6 +104,7 @@ public:
     auto const& operator[](coord_t c) const { return m_selection.at(c); }
 
     void select_all(bool select = true);
+    void select_invert();
     void select(std::uint8_t tile, bool select_ = true);
     void select_transpose(std::uint8_t tile, bool select_ = true);
     void select(coord_t c, bool select = true);
