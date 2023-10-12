@@ -442,7 +442,23 @@ void level_canvas_t::on_down(mouse_button_t mb, coord_t at)
         bool const shift = wxGetKeyState(WXK_SHIFT);
         selecting_objects = false;
 
-        if(model.tool == TOOL_STAMP || model.tool == TOOL_SELECT)
+        if(model.tool == TOOL_DROPPER || wxGetKeyState(WXK_CONTROL))
+        {
+            for(int i = level->objects.size() - 1; i >= 0; --i)
+            {
+                auto const& object = level->objects[i];
+                coord_t const at = crop(object.position) + to_coord(margin());
+
+                if(e_dist(vec_mul(at, 256), pixel256) <= object_radius() * 256.0 / scale)
+                {
+                    model.object_picker = object;
+                    break;
+                }
+            }
+        }
+
+
+        if(model.tool == TOOL_STAMP || model.tool == TOOL_SELECT || model.tool == TOOL_DROPPER)
         {
             for(int i : level->object_selector)
             {
@@ -555,6 +571,7 @@ void level_canvas_t::on_down(mouse_button_t mb, coord_t at)
                 }
             }
         }
+
     }
 
 selected:
