@@ -413,6 +413,16 @@ undo_t model_t::operator()(undo_edit_object_t const& undo)
     return ret;
 }
 
+undo_t model_t::operator()(undo_move_objects_t const& undo)
+{
+    auto ret = undo_move_objects_t{ undo.level, undo.indices };
+    for(auto i : undo.indices)
+        ret.positions.push_back(undo.level->objects.at(i).position);
+    for(unsigned i = 0; i < undo.indices.size(); ++i)
+        undo.level->objects.at(undo.indices.at(i)).position = undo.positions.at(i);
+    return ret;
+}
+
 palette_array_t model_t::palette_array(unsigned palette_index)
 {
     std::array<std::uint8_t, 16> ret;

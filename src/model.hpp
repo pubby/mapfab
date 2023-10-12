@@ -80,6 +80,13 @@ struct undo_edit_object_t
     object_t object;
 };
 
+struct undo_move_objects_t
+{
+    level_model_t* level;
+    std::vector<unsigned> indices;
+    std::vector<coord_t> positions;
+};
+
 using undo_t = std::variant
     < std::monostate
     , undo_tiles_t
@@ -88,6 +95,7 @@ using undo_t = std::variant
     , undo_new_object_t
     , undo_delete_object_t
     , undo_edit_object_t
+    , undo_move_objects_t
     >;
 
 // Used to select and deselect specific tiles:
@@ -488,6 +496,7 @@ struct model_t
     undo_t operator()(undo_new_object_t const& undo);
     undo_t operator()(undo_delete_object_t const& undo);
     undo_t operator()(undo_edit_object_t const& undo);
+    undo_t operator()(undo_move_objects_t const& undo);
 
     void write_file(FILE* fp, std::filesystem::path base_path) const;
     void read_file(FILE* fp, std::filesystem::path base_path);

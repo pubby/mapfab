@@ -416,6 +416,25 @@ void level_canvas_t::draw_tiles(render_t& gc)
 
 void level_canvas_t::on_down(mouse_button_t mb, coord_t at)
 {
+    auto const save_objects = [&]()
+    {
+        if(level->object_selector.empty())
+            return;
+
+        undo_move_objects_t undo = { level.get() };
+        for(int i : level->object_selector)
+        {
+            if(i < level->objects.size())
+            {
+                auto const& object = level->objects[i];
+                undo.indices.push_back(i);
+                undo.positions.push_back(object.position);
+            }
+        }
+
+        static_cast<level_editor_t*>(GetParent())->history.push(std::move(undo));
+    };
+
     if(level->current_layer == OBJECT_LAYER)
     {
         coord_t const pixel256 = from_screen(at, {1,1}, 256);
@@ -476,6 +495,9 @@ void level_canvas_t::on_down(mouse_button_t mb, coord_t at)
                             level->object_selector.insert(i);
                         }
 
+                        if(!dragging_objects)
+                            save_objects();
+
                         dragging_objects = true;
                         drag_last = pixel;
                     }
@@ -498,6 +520,8 @@ void level_canvas_t::on_down(mouse_button_t mb, coord_t at)
                             if(!shift && !level->object_selector.count(i))
                                 level->object_selector.clear();
                             level->object_selector.insert(i);
+                            if(!dragging_objects)
+                                save_objects();
                             dragging_objects = true;
                             drag_last = pixel;
                             return;
