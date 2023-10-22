@@ -23,12 +23,50 @@ void draw_metatile(level_model_t const& model, render_t& gc, std::uint8_t tile, 
 class object_field_t : public wxPanel
 {
 public:
-    object_field_t(wxWindow* parent, object_t& object, class_field_t const& field);
+    object_field_t(wxWindow* parent, object_t& object, class_field_t const& field, bool picker = false);
 
     void on_entry(wxCommandEvent& event);
 
     object_t& object;
     std::string const field_name;
+};
+
+class object_editor_t : public wxPanel
+{
+friend class object_dialog_t;
+public:
+    object_editor_t(wxWindow* parent, model_t& model, object_t& object, bool picker = false);
+
+    object_t& object;
+
+    void load_object();
+    void update_classes();
+private:
+    model_t& model;
+
+    bool const picker;
+
+    wxScrolledWindow* scrolled;
+    wxBoxSizer* sizer;
+
+    wxComboBox* combo;
+    wxTextCtrl* name = nullptr;
+    wxSpinCtrl* x_ctrl = nullptr;
+    wxSpinCtrl* y_ctrl = nullptr;
+
+    std::unique_ptr<wxPanel> field_panel;
+
+    std::shared_ptr<object_class_t> oc;
+
+    void load_fields();
+
+    void on_combo_select(wxCommandEvent& event);
+    void on_combo_text(wxCommandEvent& event);
+    void on_name(wxCommandEvent& event);
+    void on_change_x(wxSpinEvent& event);
+    void on_change_y(wxSpinEvent& event);
+    void on_change_i(wxSpinEvent& event);
+    void on_reset(wxCommandEvent& event);
 };
 
 class object_dialog_t : public wxDialog
@@ -39,31 +77,7 @@ public:
     object_t& object;
 private:
     model_t& model;
-
-    bool const picker;
-
-    wxScrolledWindow* scrolled;
-    wxBoxSizer* sizer;
-
-    wxComboBox* combo;
-    wxTextCtrl* name;
-    wxSpinCtrl* x_ctrl;
-    wxSpinCtrl* y_ctrl;
-
-    std::unique_ptr<wxPanel> field_panel;
-
-    std::shared_ptr<object_class_t> oc;
-
-    void load_fields();
-    void load_object();
-
-    void on_combo_select(wxCommandEvent& event);
-    void on_combo_text(wxCommandEvent& event);
-    void on_name(wxCommandEvent& event);
-    void on_change_x(wxSpinEvent& event);
-    void on_change_y(wxSpinEvent& event);
-    void on_change_i(wxSpinEvent& event);
-    void on_reset(wxCommandEvent& event);
+    object_editor_t* editor;
 };
 
 class metatile_picker_t : public selector_box_t
@@ -129,6 +143,7 @@ private:
 
 class level_editor_t : public editor_t
 {
+friend class level_canvas_t;
 public:
     level_editor_t(wxWindow* parent, model_t& model, std::shared_ptr<level_model_t> level);
 
@@ -150,6 +165,7 @@ private:
     wxComboBox* chr_combo;
     wxTextCtrl* macro_ctrl;
     std::array<wxRadioButton*, 2> layers;
+    object_editor_t* object_editor;
 
     int last_palette = -1;
     int last_width = -1;
@@ -162,7 +178,6 @@ private:
     void on_change_palette(wxSpinEvent& event);
     void on_change_width(wxSpinEvent& event);
     void on_change_height(wxSpinEvent& event);
-    void on_pick_object(wxCommandEvent& event);
     void on_macro_name(wxCommandEvent& event);
 
     void on_metatiles_select(wxCommandEvent& event);

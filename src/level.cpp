@@ -16,7 +16,7 @@ void draw_metatile(level_model_t const& model, render_t& gc, std::uint8_t tile, 
 // object_field_t //////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-object_field_t::object_field_t(wxWindow* parent, object_t& object, class_field_t const& field)
+object_field_t::object_field_t(wxWindow* parent, object_t& object, class_field_t const& field, bool picker)
 : wxPanel(parent, wxID_ANY)
 , object(object)
 , field_name(field.name)
@@ -25,11 +25,11 @@ object_field_t::object_field_t(wxWindow* parent, object_t& object, class_field_t
 
     wxStaticText* label = new wxStaticText(this, wxID_ANY, field.type + " " + field_name, wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT);
     wxTextCtrl* entry = new wxTextCtrl(this, wxID_ANY, object.fields[field_name]);
-    entry->SetMinSize(wxSize(300, 24));
+    entry->SetMinSize(wxSize(picker ? 96 : 300, 24));
 
     row_sizer->Add(label, wxSizerFlags().Proportion(1).Center());
     row_sizer->AddSpacer(8);
-    row_sizer->Add(entry, wxSizerFlags().Expand().Proportion(4).Border());
+    row_sizer->Add(entry, wxSizerFlags().Expand().Proportion(picker ? 1 : 4).Border());
 
     entry->Bind(wxEVT_TEXT, &object_field_t::on_entry, this);
 
@@ -42,11 +42,11 @@ void object_field_t::on_entry(wxCommandEvent& event)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// object_dialog_t ////////////////////////////////////////////////////////////
+// object_editor_t ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-object_dialog_t::object_dialog_t(wxWindow* parent, model_t& model, object_t& object, bool picker)
-: wxDialog(parent, wxID_ANY, "Object Editor")
+object_editor_t::object_editor_t(wxWindow* parent, model_t& model, object_t& object, bool picker)
+: wxPanel(parent, wxID_ANY)
 , object(object)
 , model(model)
 , picker(picker)
@@ -59,18 +59,26 @@ object_dialog_t::object_dialog_t(wxWindow* parent, model_t& model, object_t& obj
     wxPanel* name_panel = new wxPanel(this);
     wxStaticText* combo_label = new wxStaticText(name_panel, wxID_ANY, "Class:");
     combo = new wxComboBox(name_panel, wxID_ANY);
-    for(auto const& ptr : model.object_classes)
-        combo->Append(ptr->name);
+    update_classes();
 
-    wxStaticText* name_label = new wxStaticText(name_panel, wxID_ANY, "Name:");
-    name_label->Enable(!picker);
-    name = new wxTextCtrl(name_panel, wxID_ANY);
-    name->Enable(!picker);
+    wxStaticText* name_label = nullptr;
+    if(!picker)
+    {
+        name_label = new wxStaticText(name_panel, wxID_ANY, "Name:");
+        name_label->Enable(!picker);
+        name = new wxTextCtrl(name_panel, wxID_ANY);
+        name->Enable(!picker);
+    }
+
     {
         wxBoxSizer* sizer = new wxBoxSizer(wxHORIZONTAL);
-        sizer->Add(name_label, 0, wxALL | wxCENTER, 2);
-        sizer->Add(name, 0, wxALL | wxCENTER, 2);
-        sizer->AddSpacer(16);
+
+        if(!picker)
+        {
+            sizer->Add(name_label, 0, wxALL | wxCENTER, 2);
+            sizer->Add(name, 0, wxALL | wxCENTER, 2);
+            sizer->AddSpacer(16);
+        }
 
         sizer->Add(combo_label, 0, wxALL | wxCENTER, 2);
         sizer->Add(combo, 0, wxALL, 2);
@@ -80,31 +88,34 @@ object_dialog_t::object_dialog_t(wxWindow* parent, model_t& model, object_t& obj
     }
     main_sizer->Add(name_panel, 0, wxALL, 2);
 
-    wxPanel* xy_panel = new wxPanel(this);
+    if(!picker)
     {
-        wxBoxSizer* sizer = new wxBoxSizer(wxHORIZONTAL);
+        wxPanel* xy_panel = new wxPanel(this);
+        {
+            wxBoxSizer* sizer = new wxBoxSizer(wxHORIZONTAL);
 
-        wxStaticText* x_label = new wxStaticText(xy_panel, wxID_ANY, "X:");
-        x_label->Enable(!picker);
-        x_ctrl= new wxSpinCtrl(xy_panel);
-        x_ctrl->SetRange(-32768, 32767);
-        x_ctrl->Enable(!picker);
-        sizer->Add(x_label, 0, wxALL | wxCENTER, 2);
-        sizer->Add(x_ctrl, 0, wxALL, 2);
-        sizer->AddSpacer(16);
+            wxStaticText* x_label = new wxStaticText(xy_panel, wxID_ANY, "X:");
+            x_label->Enable(!picker);
+            x_ctrl= new wxSpinCtrl(xy_panel);
+            x_ctrl->SetRange(-32768, 32767);
+            x_ctrl->Enable(!picker);
+            sizer->Add(x_label, 0, wxALL | wxCENTER, 2);
+            sizer->Add(x_ctrl, 0, wxALL, 2);
+            sizer->AddSpacer(16);
 
-        wxStaticText* y_label = new wxStaticText(xy_panel, wxID_ANY, "Y:");
-        y_label->Enable(!picker);
-        y_ctrl= new wxSpinCtrl(xy_panel);
-        y_ctrl->SetRange(-32768, 32767);
-        y_ctrl->Enable(!picker);
-        sizer->Add(y_label, 0, wxALL | wxCENTER, 2);
-        sizer->Add(y_ctrl, 0, wxALL, 2);
-        sizer->AddSpacer(16);
+            wxStaticText* y_label = new wxStaticText(xy_panel, wxID_ANY, "Y:");
+            y_label->Enable(!picker);
+            y_ctrl= new wxSpinCtrl(xy_panel);
+            y_ctrl->SetRange(-32768, 32767);
+            y_ctrl->Enable(!picker);
+            sizer->Add(y_label, 0, wxALL | wxCENTER, 2);
+            sizer->Add(y_ctrl, 0, wxALL, 2);
+            sizer->AddSpacer(16);
 
-        xy_panel->SetSizer(sizer);
+            xy_panel->SetSizer(sizer);
+        }
+        main_sizer->Add(xy_panel, 0, wxALL, 2);
     }
-    main_sizer->Add(xy_panel, 0, wxALL, 2);
 
     wxStaticText* vars_label = new wxStaticText(this, wxID_ANY, "Vars:");
     main_sizer->AddSpacer(4);
@@ -115,16 +126,12 @@ object_dialog_t::object_dialog_t(wxWindow* parent, model_t& model, object_t& obj
 
     load_fields();
 
-    wxButton* reset_button = new wxButton(this, wxID_ANY, "Reset");
-    wxButton* ok_button = new wxButton(this, wxID_OK, "Ok");
-
-    wxBoxSizer* button_sizer = new wxBoxSizer(wxHORIZONTAL);
-    button_sizer->Add(reset_button, 0, wxALL, 32);
-    button_sizer->Add(ok_button, 0, wxALL, 32);
     main_sizer->Add(scrolled, wxSizerFlags().Expand());
-    main_sizer->Add(button_sizer, 0, wxALIGN_CENTER);
 
-    scrolled->SetMinSize(wxSize(600, 400));
+    if(!picker)
+        scrolled->SetMinSize(wxSize(600, 400));
+    else
+        scrolled->SetMinSize(wxSize(256, 256));
     scrolled->SetSizer(sizer);
     scrolled->FitInside();
     scrolled->SetScrollRate(25, 25);
@@ -133,15 +140,26 @@ object_dialog_t::object_dialog_t(wxWindow* parent, model_t& model, object_t& obj
 
     SetSizerAndFit(main_sizer);
 
-    combo->Bind(wxEVT_COMBOBOX, &object_dialog_t::on_combo_select, this);
-    combo->Bind(wxEVT_TEXT, &object_dialog_t::on_combo_text, this);
-    name->Bind(wxEVT_TEXT, &object_dialog_t::on_name, this);
-    x_ctrl->Bind(wxEVT_SPINCTRL, &object_dialog_t::on_change_x, this);
-    y_ctrl->Bind(wxEVT_SPINCTRL, &object_dialog_t::on_change_y, this);
-    reset_button->Bind(wxEVT_BUTTON, &object_dialog_t::on_reset, this);
+    combo->Bind(wxEVT_COMBOBOX, &object_editor_t::on_combo_select, this);
+    combo->Bind(wxEVT_TEXT, &object_editor_t::on_combo_text, this);
+    if(name)
+        name->Bind(wxEVT_TEXT, &object_editor_t::on_name, this);
+    if(x_ctrl)
+        x_ctrl->Bind(wxEVT_SPINCTRL, &object_editor_t::on_change_x, this);
+    if(y_ctrl)
+        y_ctrl->Bind(wxEVT_SPINCTRL, &object_editor_t::on_change_y, this);
 }
 
-void object_dialog_t::load_fields()
+void object_editor_t::update_classes()
+{
+    auto oclass = object.oclass;
+    combo->Clear();
+    for(auto const& ptr : model.object_classes)
+        combo->Append(ptr->name);
+    combo->SetValue(oclass);
+}
+
+void object_editor_t::load_fields()
 {
     field_panel.reset(new wxPanel(scrolled));
     sizer->Add(field_panel.get(), wxSizerFlags().Expand());
@@ -152,7 +170,7 @@ void object_dialog_t::load_fields()
     {
         for(auto const& field : oc->fields)
         {
-            auto* of = new object_field_t(field_panel.get(), object, field);
+            auto* of = new object_field_t(field_panel.get(), object, field, picker);
             panel_sizer->Add(of);
         }
     }
@@ -162,12 +180,14 @@ void object_dialog_t::load_fields()
     Fit();
 }
 
-void object_dialog_t::load_object()
+void object_editor_t::load_object()
 {
     if(!picker)
     {
-        x_ctrl->SetValue(object.position.x);
-        y_ctrl->SetValue(object.position.y);
+        if(x_ctrl)
+            x_ctrl->SetValue(object.position.x);
+        if(y_ctrl)
+            y_ctrl->SetValue(object.position.y);
     }
 
     for(auto const& ptr : model.object_classes)
@@ -180,12 +200,13 @@ void object_dialog_t::load_object()
     }
 
     combo->SetValue(object.oclass);
-    name->SetValue(object.name);
+    if(name)
+        name->SetValue(object.name);
 
     load_fields();
 }
 
-void object_dialog_t::on_combo_select(wxCommandEvent& event)
+void object_editor_t::on_combo_select(wxCommandEvent& event)
 {
     int const index = event.GetSelection();
     if(index >= 0 && index < model.object_classes.size())
@@ -198,7 +219,7 @@ void object_dialog_t::on_combo_select(wxCommandEvent& event)
     load_fields();
 }
 
-void object_dialog_t::on_combo_text(wxCommandEvent& event)
+void object_editor_t::on_combo_text(wxCommandEvent& event)
 {
     object.oclass = combo->GetValue();
 
@@ -214,12 +235,12 @@ void object_dialog_t::on_combo_text(wxCommandEvent& event)
     load_fields();
 }
 
-void object_dialog_t::on_name(wxCommandEvent& event)
+void object_editor_t::on_name(wxCommandEvent& event)
 { 
     object.name = event.GetString().ToStdString(); 
 }
 
-void object_dialog_t::on_change_x(wxSpinEvent& event)
+void object_editor_t::on_change_x(wxSpinEvent& event)
 {
     // TODO
     //if(!history.on_top<undo_level_palette_t>())
@@ -230,7 +251,7 @@ void object_dialog_t::on_change_x(wxSpinEvent& event)
     GetParent()->Refresh();
 }
 
-void object_dialog_t::on_change_y(wxSpinEvent& event)
+void object_editor_t::on_change_y(wxSpinEvent& event)
 {
     // TODO
     //if(!history.on_top<undo_level_palette_t>())
@@ -241,16 +262,49 @@ void object_dialog_t::on_change_y(wxSpinEvent& event)
     GetParent()->Refresh();
 }
 
-void object_dialog_t::on_change_i(wxSpinEvent& event)
+void object_editor_t::on_change_i(wxSpinEvent& event)
 {
     // TODO
 }
 
-void object_dialog_t::on_reset(wxCommandEvent& event)
+void object_editor_t::on_reset(wxCommandEvent& event)
 {
     object = object_t{ .position = object.position };
     load_object();
     GetParent()->Refresh();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// object_dialog_t ////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+object_dialog_t::object_dialog_t(wxWindow* parent, model_t& model, object_t& object, bool picker)
+: wxDialog(parent, wxID_ANY, "Object Editor")
+, object(object)
+, model(model)
+{
+    wxBoxSizer* main_sizer = new wxBoxSizer(wxVERTICAL);
+    editor = new object_editor_t(this, model, object, picker);
+
+    wxButton* reset_button = new wxButton(this, wxID_ANY, "Reset");
+    wxButton* ok_button = new wxButton(this, wxID_OK, "Ok");
+
+    wxBoxSizer* button_sizer = new wxBoxSizer(wxHORIZONTAL);
+    button_sizer->Add(reset_button, 0, wxALL, 32);
+    button_sizer->Add(ok_button, 0, wxALL, 32);
+    main_sizer->Add(editor, wxSizerFlags().Expand());
+    main_sizer->Add(button_sizer, 0, wxALIGN_CENTER);
+
+    //scrolled->SetMinSize(wxSize(600, 400));
+    //scrolled->SetSizer(sizer);
+    //scrolled->FitInside();
+    //scrolled->SetScrollRate(25, 25);
+
+    editor->load_object();
+
+    SetSizerAndFit(main_sizer);
+
+    reset_button->Bind(wxEVT_BUTTON, &object_editor_t::on_reset, editor);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -452,13 +506,14 @@ void level_canvas_t::on_down(mouse_button_t mb, coord_t at)
                 if(e_dist(vec_mul(at, 256), pixel256) <= object_radius() * 256.0 / scale)
                 {
                     model.object_picker = object;
+                    static_cast<level_editor_t*>(GetParent())->object_editor->load_object();
                     break;
                 }
             }
         }
 
 
-        if(model.tool == TOOL_STAMP || model.tool == TOOL_SELECT || model.tool == TOOL_DROPPER)
+        if(model.tool == TOOL_STAMP || model.tool == TOOL_SELECT)
         {
             for(int i : level->object_selector)
             {
@@ -680,13 +735,10 @@ level_editor_t::level_editor_t(wxWindow* parent, model_t& model, std::shared_ptr
 
     object_panel = new wxPanel(left_panel);
     object_panel->SetMinSize(wxSize(256 + 16, 0));
-    wxButton* edit_button = new wxButton(object_panel, wxID_ANY, "Edit");
-    edit_button->SetMinSize(wxSize(256, 128));
-    auto* object_text = new wxStaticText(object_panel, wxID_ANY, "Object Picker");
+    object_editor = new object_editor_t(object_panel, model, model.object_picker, true);
     {
         wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
-        sizer->Add(object_text, wxSizerFlags().Border(wxLEFT));
-        sizer->Add(edit_button, wxSizerFlags().Border(wxLEFT));
+        sizer->Add(object_editor, wxSizerFlags().Border(wxLEFT));
         object_panel->SetSizer(sizer);
     }
     object_panel->Hide();
@@ -776,7 +828,6 @@ level_editor_t::level_editor_t(wxWindow* parent, model_t& model, std::shared_ptr
     palette_ctrl->Bind(wxEVT_SPINCTRL, &level_editor_t::on_change_palette, this);
     width_ctrl->Bind(wxEVT_SPINCTRL, &level_editor_t::on_change_width, this);
     height_ctrl->Bind(wxEVT_SPINCTRL, &level_editor_t::on_change_height, this);
-    edit_button->Bind(wxEVT_BUTTON, &level_editor_t::on_pick_object, this);
     metatiles_combo->Bind(wxEVT_COMBOBOX, &level_editor_t::on_metatiles_select, this);
     metatiles_combo->Bind(wxEVT_TEXT, &level_editor_t::on_metatiles_text, this);
     chr_combo->Bind(wxEVT_COMBOBOX, &level_editor_t::on_chr_select, this);
@@ -860,14 +911,6 @@ void level_editor_t::on_change_height(wxSpinEvent& event)
     Refresh();
 }
 
-void level_editor_t::on_pick_object(wxCommandEvent& event)
-{
-    object_dialog_t dialog(this, model, model.object_picker, true);
-    dialog.ShowModal();
-    dialog.Destroy();
-    SetFocus();
-}
-
 void level_editor_t::model_refresh()
 {
     std::string const metatiles_name = level->metatiles_name;
@@ -886,6 +929,9 @@ void level_editor_t::model_refresh()
         chr_combo->Append(chr.name);
     chr_combo->SetValue(chr_name);
     chr_combo->Bind(wxEVT_TEXT, &level_editor_t::on_chr_text, this);
+
+    object_editor->update_classes();
+    object_editor->load_object();
 
     load_metatiles();
 }
