@@ -62,7 +62,7 @@ These children are managed using the "Tab Manager", accessible via the "View" me
 
 image::tab_manager.png[]
 
-Children tabs will be visible when the checkbox neck to their name is checked.
+Children tabs will be visible when the checkbox next to their name is checked.
 The "Deselect All" and "Select by Name" buttons can be used to deselect or select multiple children tabs at once.
 
 Tabs can be created, deleted, renamed, or cloned by right clicking an existing tab entry. 
