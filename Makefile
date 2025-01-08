@@ -91,6 +91,8 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(DATA)
 	$(compile)
 $(OBJDIR)/%.d: $(SRCDIR)/%.cpp $(DATA)
 	$(deps)
+
+# You can remove these lines if you don't have 'bin2c' installed:
 $(SRCDIR)/%.png.inc: $(IMGDIR)/%.png
 	bin2c -o $@ $<
 

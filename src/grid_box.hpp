@@ -360,6 +360,7 @@ public:
     virtual canvas_box_t& canvas_box() = 0;
     auto& layer() { return canvas_box().layer(); }
 
+    virtual bool enable_copy() { return false; }
     virtual tile_copy_t copy(bool cut);
     virtual void select_all(bool select = true);
     virtual void select_invert();

@@ -147,6 +147,7 @@ friend class level_canvas_t;
 public:
     level_editor_t(wxWindow* parent, model_t& model, std::shared_ptr<level_model_t> level);
 
+    virtual bool enable_copy() override;
     virtual void on_update() override;
     level_model_t& level_model() { return *level; }
     auto ptr() { return level.get(); }

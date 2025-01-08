@@ -274,8 +274,8 @@ private:
             paste->Enable(can_paste);
 
             bool const can_fill = model.tool == TOOL_SELECT;
-            cut->Enable(can_fill);
-            copy->Enable(can_fill);
+            cut->Enable(can_fill || editor->enable_copy());
+            copy->Enable(can_fill || editor->enable_copy());
             fill->Enable(can_fill);
             fill_paste->Enable(can_fill && can_paste);
             fill_attribute->Enable(can_fill && notebook->GetSelection() == TAB_METATILES);

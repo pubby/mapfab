@@ -512,8 +512,7 @@ void level_canvas_t::on_down(mouse_button_t mb, coord_t at)
             }
         }
 
-
-        if(model.tool == TOOL_STAMP || model.tool == TOOL_SELECT)
+        if((model.tool == TOOL_STAMP || model.tool == TOOL_SELECT) && !model.paste)
         {
             for(int i : level->object_selector)
             {
@@ -864,6 +863,11 @@ void level_editor_t::on_radio(wxCommandEvent& event)
     for(unsigned layer = 0; layer < layers.size(); ++layer)
         if(radio == layers[layer])
             return on_active(layer);
+}
+
+bool level_editor_t::enable_copy() 
+{ 
+    return level->current_layer == OBJECT_LAYER &&  level->object_selector.size();
 }
 
 void level_editor_t::on_update()

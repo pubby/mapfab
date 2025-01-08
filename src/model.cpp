@@ -28,7 +28,7 @@ void object_t::append_vec(std::vector<std::uint16_t>& vec) const
     for(auto const& field : fields)
     {
         append_str(field.first);
-        append_str(field.first);
+        append_str(field.second);
     }
 }
 
