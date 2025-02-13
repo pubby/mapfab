@@ -87,6 +87,15 @@ struct undo_move_objects_t
     std::vector<coord_t> positions;
 };
 
+struct undo_shift_mt_t
+{
+    std::vector<std::shared_ptr<level_model_t>> levels;
+    class metatile_model_t* metatiles;
+    std::uint8_t from;
+    std::uint8_t to;
+    int num;
+};
+
 using undo_t = std::variant
     < std::monostate
     , undo_tiles_t
@@ -96,6 +105,7 @@ using undo_t = std::variant
     , undo_delete_object_t
     , undo_edit_object_t
     , undo_move_objects_t
+    , undo_shift_mt_t
     >;
 
 // Used to select and deselect specific tiles:
@@ -363,6 +373,8 @@ public:
     void clear_chr();
     void refresh_chr(chr_array_t const& chr, palette_array_t const& palette);
 
+    void shift(std::uint8_t from, std::uint8_t to, int amount);
+
     std::string name = "metatiles";
     std::string chr_name;
     std::uint16_t num = 1;
@@ -427,6 +439,8 @@ public:
         std::vector<wxBitmap> const* collision_bitmaps, palette_array_t const& palette);
 
     void reindex_objects();
+
+    void shift(std::uint8_t from, std::uint8_t to, int amount);
 
     std::string name = "level";
     std::string macro_name;
@@ -497,6 +511,7 @@ struct model_t
     undo_t operator()(undo_delete_object_t const& undo);
     undo_t operator()(undo_edit_object_t const& undo);
     undo_t operator()(undo_move_objects_t const& undo);
+    undo_t operator()(undo_shift_mt_t const& undo);
 
     void write_file(FILE* fp, std::filesystem::path base_path) const;
     void read_file(FILE* fp, std::filesystem::path base_path);

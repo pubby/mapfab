@@ -450,6 +450,7 @@ private:
     {
         if(editor_t* editor = get_editor())
         {
+            model.modify();
             editor->history.push(editor->layer().fill());
             Refresh();
         }
@@ -465,6 +466,7 @@ private:
                 {
                     clip_data_t data;
                     wxTheClipboard->GetData(data);
+                    model.modify();
                     editor->history.push(editor->layer().fill_paste(data.get()));
                     Refresh();
                 }
@@ -479,6 +481,7 @@ private:
         {
             if(auto* page = metatile_panel->page())
             {
+                model.modify();
                 page->history.push(m->chr_layer.fill_attribute());
                 Refresh();
             }

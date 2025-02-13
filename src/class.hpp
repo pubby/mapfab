@@ -53,6 +53,7 @@ public:
     void load();
 
 private:
+    template<bool Modify>
     void new_field(class_field_t const& field);
 
     model_t& model;

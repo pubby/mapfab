@@ -23,12 +23,15 @@ void draw_metatile(level_model_t const& model, render_t& gc, std::uint8_t tile, 
 class object_field_t : public wxPanel
 {
 public:
-    object_field_t(wxWindow* parent, object_t& object, class_field_t const& field, bool picker = false);
+    object_field_t(wxWindow* parent, model_t& model, object_t& object, class_field_t const& field, bool picker = false);
 
     void on_entry(wxCommandEvent& event);
 
     object_t& object;
     std::string const field_name;
+
+private:
+    model_t& model;
 };
 
 class object_editor_t : public wxPanel

@@ -16,10 +16,11 @@ void draw_metatile(level_model_t const& model, render_t& gc, std::uint8_t tile, 
 // object_field_t //////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-object_field_t::object_field_t(wxWindow* parent, object_t& object, class_field_t const& field, bool picker)
+object_field_t::object_field_t(wxWindow* parent, model_t& model, object_t& object, class_field_t const& field, bool picker)
 : wxPanel(parent, wxID_ANY)
 , object(object)
 , field_name(field.name)
+, model(model)
 {
     wxBoxSizer* row_sizer = new wxBoxSizer(wxHORIZONTAL);
 
@@ -39,6 +40,7 @@ object_field_t::object_field_t(wxWindow* parent, object_t& object, class_field_t
 void object_field_t::on_entry(wxCommandEvent& event)
 { 
     object.fields[field_name] = event.GetString().ToStdString(); 
+    model.modify();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -170,7 +172,7 @@ void object_editor_t::load_fields()
     {
         for(auto const& field : oc->fields)
         {
-            auto* of = new object_field_t(field_panel.get(), object, field, picker);
+            auto* of = new object_field_t(field_panel.get(), model, object, field, picker);
             panel_sizer->Add(of);
         }
     }
@@ -213,7 +215,11 @@ void object_editor_t::on_combo_select(wxCommandEvent& event)
     {
         oc = model.object_classes[index];
         if(oc)
+        {
+            if(object.oclass != oc->name)
+                model.modify();
             object.oclass = oc->name;
+        }
     }
 
     load_fields();
@@ -227,6 +233,8 @@ void object_editor_t::on_combo_text(wxCommandEvent& event)
     {
         if(ptr->name == object.oclass)
         {
+            if(oc != ptr)
+                model.modify();
             oc = ptr;
             break;
         }
@@ -237,6 +245,8 @@ void object_editor_t::on_combo_text(wxCommandEvent& event)
 
 void object_editor_t::on_name(wxCommandEvent& event)
 { 
+    if(object.name != event.GetString().ToStdString())
+        model.modify();
     object.name = event.GetString().ToStdString(); 
 }
 

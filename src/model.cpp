@@ -297,9 +297,58 @@ void metatile_model_t::refresh_chr(chr_array_t const& chr, palette_array_t const
         chr_bitmaps.push_back(convert_bitmap(bmp[i]));
 }
 
+void metatile_model_t::shift(std::uint8_t from, std::uint8_t to, int amount)
+{
+    chr_layer_t chr_copy = chr_layer;
+    collision_layer_t collision_copy = collision_layer;
+
+    int len = int(to) - int(from);
+    if(len < 0)
+        len += 256;
+
+    int j = 0;
+    for(std::uint8_t i = from; i != to; i += 1, j += 1)
+    {
+        unsigned tx = (i % 16);
+        unsigned ty = (i / 16);
+
+        int k = (j + amount) % len;
+        if(k < 0)
+            k += len;
+
+        unsigned ux = (std::uint8_t(from + k) % 16);
+        unsigned uy = (std::uint8_t(from + k) / 16);
+
+        for(unsigned y = 0; y < 2; y += 1)
+        for(unsigned x = 0; x < 2; x += 1)
+            chr_layer.set({ ux*2+x, uy*2+y }, chr_copy.get({ tx*2+x, ty*2+y }));
+        collision_layer.set({ ux, uy, }, collision_copy.get({ tx, ty }));
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // level_model_t ///////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
+
+void level_model_t::shift(std::uint8_t from, std::uint8_t to, int amount)
+{
+    int len = int(to) - int(from);
+    if(len < 0)
+        len += 256;
+
+    for(std::uint8_t& mt : metatile_layer.tiles)
+    {
+        int a = mt - int(from);
+        if(a >= 0 && a < len)
+        {
+            a += amount;
+            a %= len;
+            if(a < 0)
+                a += len;
+            mt = std::uint8_t(from + a);
+        }
+    }
+}
 
 void level_model_t::clear_metatiles()
 {
@@ -420,6 +469,17 @@ undo_t model_t::operator()(undo_move_objects_t const& undo)
         ret.positions.push_back(undo.level->objects.at(i).position);
     for(unsigned i = 0; i < undo.indices.size(); ++i)
         undo.level->objects.at(undo.indices.at(i)).position = undo.positions.at(i);
+    return ret;
+}
+
+undo_t model_t::operator()(undo_shift_mt_t const& undo)
+{
+    undo.metatiles->shift(undo.from, undo.to, undo.num);
+    for(auto level : undo.levels)
+        level->shift(undo.from, undo.to, undo.num);
+
+    undo_shift_mt_t ret = undo;
+    ret.num = -ret.num;
     return ret;
 }
 

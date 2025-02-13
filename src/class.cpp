@@ -152,7 +152,7 @@ void class_editor_t::on_new(wxCommandEvent& event)
 
         auto& field = oc->fields.emplace_back();
         field.name = new_name;
-        new_field(field);
+        new_field<true>(field);
         FitInside();
         model.modify();
     }
@@ -201,19 +201,21 @@ void class_editor_t::on_color(wxColourPickerEvent& event)
     model.modify();
 }
 
+template<bool Modify>
 void class_editor_t::new_field(class_field_t const& field)
 {
     auto* def = new field_def_t(this, field, field_defs.size());
     field_defs.emplace_back(def);
     field_sizer->Add(def, wxSizerFlags().Expand());
-    model.modify();
+    if(Modify)
+        model.modify();
 }
 
 void class_editor_t::load()
 {
     field_defs.clear();
     for(auto const& field : oc->fields)
-        new_field(field);
+        new_field<false>(field);
 
     FitInside();
 }

@@ -105,6 +105,8 @@ metatile_editor_t::metatile_editor_t(wxWindow* parent, model_t& model, std::shar
     wxPanel* left_panel = new wxPanel(this);
     picker = new chr_picker_t(left_panel, model, metatiles);
 
+    wxButton* reorder_button = new wxButton(left_panel, wxID_ANY, "Shift Metatiles");
+
     attributes[0] = new wxRadioButton(left_panel, wxID_ANY, "Attribute 0  (F1)", wxDefaultPosition, wxDefaultSize, wxRB_GROUP);
     attributes[1] = new wxRadioButton(left_panel, wxID_ANY, "Attribute 1  (F2)");
     attributes[2] = new wxRadioButton(left_panel, wxID_ANY, "Attribute 2  (F3)");
@@ -128,6 +130,7 @@ metatile_editor_t::metatile_editor_t(wxWindow* parent, model_t& model, std::shar
     {
         wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
         sizer->Add(picker, wxSizerFlags().Expand().Proportion(1));
+        sizer->Add(reorder_button, wxSizerFlags().Border(wxLEFT | wxDOWN));
         for(auto* ptr : attributes)
             sizer->Add(ptr, wxSizerFlags().Border(wxLEFT));
         sizer->Add(chr_label, wxSizerFlags().Border(wxLEFT | wxUP));
@@ -171,6 +174,8 @@ metatile_editor_t::metatile_editor_t(wxWindow* parent, model_t& model, std::shar
     Bind(wxEVT_MENU, &metatile_editor_t::on_active<2>, this, ID_ATTR2);
     Bind(wxEVT_MENU, &metatile_editor_t::on_active<3>, this, ID_ATTR3);
     Bind(wxEVT_MENU, &metatile_editor_t::on_active<ACTIVE_COLLISION>, this, ID_COLLISION);
+
+    reorder_button->Bind(wxEVT_BUTTON, &metatile_editor_t::on_reorder, this);
 
     model_refresh();
 }
@@ -227,6 +232,39 @@ void metatile_editor_t::on_combo_text(wxCommandEvent& event)
     load_chr();
 }
 
+void metatile_editor_t::on_reorder(wxCommandEvent& event)
+{
+    reorder_dialog_t dialog(this);
+
+    if(dialog.ShowModal() == wxID_OK) 
+    {
+        int const from = dialog.from_ctrl->GetValue();
+        int const to = dialog.to_ctrl->GetValue();
+        int num = dialog.num_ctrl->GetValue();
+
+        if(num != 0)
+        {
+            std::vector<std::shared_ptr<level_model_t>> levels;
+
+            metatiles->shift(from, to, num);
+            for(auto level : model.levels)
+            {
+                auto* mt = lookup_name_ptr(level->metatiles_name, model.metatiles).get();
+                if(mt == metatiles.get())
+                {
+                    level->shift(from, to, num);
+                    levels.push_back(level);
+                }
+            }
+
+            history.push(undo_shift_mt_t{ std::move(levels), metatiles.get(), from, to, -num });
+        }
+    }
+
+    dialog.Destroy();
+    SetFocus();
+}
+
 void metatile_editor_t::load_chr()
 {
     if(auto* chr_file = lookup_name(metatiles->chr_name, model.chr_files))
@@ -255,4 +293,46 @@ void metatile_editor_t::on_num(wxCommandEvent& event)
         model.modify();
     metatiles->num = num_ctrl->GetValue();
     Refresh();
+}
+
+reorder_dialog_t::reorder_dialog_t(wxWindow* parent)
+: wxDialog(parent, wxID_ANY, "Shift Metatiles")
+{
+    wxBoxSizer* main_sizer = new wxBoxSizer(wxVERTICAL);
+
+
+    wxButton* cancel_button = new wxButton(this, wxID_CANCEL, "Cancel");
+    wxButton* ok_button = new wxButton(this, wxID_OK, "Ok");
+
+    auto* from_label = new wxStaticText(this, wxID_ANY, "From:");
+    from_ctrl = new wxSpinCtrl(this);
+    from_ctrl->SetRange(0, 255);
+
+    auto* to_label = new wxStaticText(this, wxID_ANY, "To:");
+    to_ctrl = new wxSpinCtrl(this);
+    to_ctrl->SetRange(0, 255);
+    to_ctrl->SetValue(255);
+
+    auto* num_label = new wxStaticText(this, wxID_ANY, "Amount:");
+    num_ctrl = new wxSpinCtrl(this);
+    num_ctrl->SetRange(-256, 256);
+
+    wxBoxSizer* ctrl_sizer = new wxBoxSizer(wxHORIZONTAL);
+    wxBoxSizer* ctrl2_sizer = new wxBoxSizer(wxHORIZONTAL);
+    wxBoxSizer* button_sizer = new wxBoxSizer(wxHORIZONTAL);
+    button_sizer->Add(cancel_button, 0, wxALL, 32);
+    button_sizer->Add(ok_button, 0, wxALL, 32);
+    ctrl_sizer->Add(from_label, wxSizerFlags().Border(wxLEFT | wxUP));
+    ctrl_sizer->Add(from_ctrl, wxSizerFlags().Border(wxLEFT | wxRIGHT));
+    ctrl_sizer->Add(to_label, wxSizerFlags().Border(wxLEFT | wxUP));
+    ctrl_sizer->Add(to_ctrl, wxSizerFlags().Border(wxLEFT | wxRIGHT));
+    ctrl2_sizer->Add(num_label, wxSizerFlags().Border(wxLEFT | wxUP));
+    ctrl2_sizer->Add(num_ctrl, wxSizerFlags().Border(wxLEFT | wxRIGHT));
+    main_sizer->Add(ctrl_sizer, wxSizerFlags().Border(wxLEFT | wxUP | wxDOWN | wxRIGHT));
+    main_sizer->Add(ctrl2_sizer, wxSizerFlags().Border(wxLEFT | wxUP | wxDOWN | wxRIGHT));
+    main_sizer->Add(button_sizer, 0, wxALIGN_CENTER);
+
+    SetSizerAndFit(main_sizer);
+
+    //reset_button->Bind(wxEVT_BUTTON, &object_editor_t::on_reset, editor);
 }

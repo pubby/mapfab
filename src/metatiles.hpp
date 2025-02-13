@@ -82,6 +82,7 @@ private:
     void on_radio(wxCommandEvent& event);
     void on_combo_select(wxCommandEvent& event);
     void on_combo_text(wxCommandEvent& event);
+    void on_reorder(wxCommandEvent& event);
 
     template<unsigned I>
     void on_active(wxCommandEvent& event) { on_active(I); }
@@ -113,6 +114,17 @@ public:
     {
         load_pages();
     }
+};
+
+class reorder_dialog_t : public wxDialog
+{
+friend class metatile_editor_t;
+public:
+    explicit reorder_dialog_t(wxWindow* parent);
+private:
+    wxSpinCtrl* from_ctrl;
+    wxSpinCtrl* to_ctrl;
+    wxSpinCtrl* num_ctrl;
 };
 
 #endif
