@@ -26,7 +26,7 @@ OBJDIR:=obj
 IMGDIR:=img
 INCS:=-I$(SRCDIR)
 
-VERSION := "0.2"
+VERSION := "0.5"
 GIT_COMMIT := "$(shell git describe --abbrev=8 --dirty --always)"
 
 WXCONFIG := wx-config

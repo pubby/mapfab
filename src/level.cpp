@@ -843,6 +843,13 @@ level_editor_t::level_editor_t(wxWindow* parent, model_t& model, std::shared_ptr
     chr_combo->Bind(wxEVT_TEXT, &level_editor_t::on_chr_text, this);
     macro_ctrl->Bind(wxEVT_TEXT, &level_editor_t::on_macro_name, this);
 
+    int li = int(level->current_layer);
+    if(li >= 0 && li <= 1)
+    {
+        layers[li]->SetValue(true);
+        on_active(li);
+    }
+
     model_refresh();
 }
 
