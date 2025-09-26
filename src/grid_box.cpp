@@ -23,7 +23,6 @@ grid_box_t::grid_box_t(wxWindow* parent, bool can_zoom)
         Bind(wxEVT_MOUSEWHEEL, &grid_box_t::on_wheel, this);
 
     Bind(wxEVT_UPDATE_UI, &grid_box_t::on_update, this);
-
     Connect(wxEVT_PAINT, wxPaintEventHandler(grid_box_t::on_paint), 0, this);
     SetBackgroundStyle(wxBG_STYLE_PAINT);
 }

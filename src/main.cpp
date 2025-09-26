@@ -110,7 +110,7 @@ public:
 
             wxStaticText* usage_label = new wxStaticText(panel, wxID_ANY, "Maximum Usage:");
             usage_ctrl= new wxSpinCtrl(panel);
-            usage_ctrl->SetRange(0, 256*256);
+            usage_ctrl->SetRange(1, 256*256);
             usage_ctrl->SetValue(usage);
             sizer->Add(usage_label, 0, wxALL | wxCENTER, 2);
             sizer->Add(usage_ctrl, 0, wxALL | wxCENTER, 2);
@@ -132,7 +132,7 @@ public:
             wxButton* ok_button = new wxButton(button_panel, wxID_OK, "Ok");
             sizer->Add(ok_button, 0, wxALL | wxALIGN_CENTER, 2);
             sizer->AddSpacer(16);
-            wxButton* cancel_button = new wxButton(button_panel, wxID_OK, "Cancel");
+            wxButton* cancel_button = new wxButton(button_panel, wxID_CANCEL, "Cancel");
             sizer->Add(cancel_button, 0, wxALL | wxALIGN_CENTER, 2);
 
             button_panel->SetSizer(sizer);
