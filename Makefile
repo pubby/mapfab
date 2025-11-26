@@ -7,12 +7,12 @@ run: mapfab
 	./mapfab
 
 define compile
-@echo -e '\033[32mCXX $@\033[0m'
+@printf '\033[32mCXX $@\033[0m\n'
 $(CXX) $(CXXFLAGS) -c -o $@ $<
 endef
 
 define deps
-@echo -e '\033[32mDEPS $@\033[0m'
+@printf '\033[32mDEPS $@\033[0m\n'
 $(CXX) $(CXXFLAGS) -MM -MP -MT '\
 $(patsubst $(SRCDIR)/%,$(OBJDIR)/%,$(<:.cpp=.o)) \
 $(patsubst $(SRCDIR)/%,$(OBJDIR)/%,$(<:.cpp=.d))\
@@ -39,6 +39,13 @@ ifeq ($(ARCH),MINGW_GTK3)
 override WXCONFIG:=wx-config-gtk3
 endif
 
+# Detect compiler for error limit flag
+ifeq ($(shell $(CXX) --version 2>&1 | grep -q clang && echo clang),clang)
+  ERROR_LIMIT := -ferror-limit=3
+else
+  ERROR_LIMIT := -fmax-errors=3
+endif
+
 override CXXFLAGS+= \
   `$(WXCONFIG) --cxxflags` \
   -std=gnu++20 \
@@ -47,7 +54,7 @@ override CXXFLAGS+= \
   -Wno-unused-parameter \
   -Wno-narrowing \
   -Wno-missing-field-initializers \
-  -fmax-errors=3 \
+  $(ERROR_LIMIT) \
   -ftemplate-depth=100 \
   -pipe \
   -g \

@@ -1,5 +1,7 @@
 #include "grid_box.hpp"
 
+#include <sstream>
+
 #include <wx/dcbuffer.h>
 #include <wx/graphics.h>
 #include <wx/dcgraph.h>
@@ -35,6 +37,8 @@ void grid_box_t::on_paint(wxPaintEvent& event)
 
 #ifdef __WXMSW__
     wxGraphicsRenderer* renderer = wxGraphicsRenderer::GetDirect2DRenderer();
+#elif defined(__WXOSX__)
+    wxGraphicsRenderer* renderer = wxGraphicsRenderer::GetDefaultRenderer();
 #else
     wxGraphicsRenderer* renderer = wxGraphicsRenderer::GetCairoRenderer();
 #endif
