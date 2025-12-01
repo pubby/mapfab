@@ -166,11 +166,13 @@ private:
     }
 };
  
+inline wxDataFormat tiles_format() { return wxDataFormat("tiles"); }
+
 class clip_data_t : public wxDataObjectSimple
 {
 public:
     explicit clip_data_t(tile_copy_t const& cp = {}) 
-    : wxDataObjectSimple("tiles")
+    : wxDataObjectSimple(tiles_format())
     , data(cp.to_vec())
     {}
 
@@ -422,7 +424,7 @@ private:
         {
             if(wxTheClipboard->Open())
             {
-                if(wxTheClipboard->IsSupported("tiles"))
+                if(wxTheClipboard->IsSupported(tiles_format()))
                 {
                     clip_data_t data;
                     wxTheClipboard->GetData(data);
@@ -462,7 +464,7 @@ private:
         {
             if(wxTheClipboard->Open())
             {
-                if(wxTheClipboard->IsSupported("tiles"))
+                if(wxTheClipboard->IsSupported(tiles_format()))
                 {
                     clip_data_t data;
                     wxTheClipboard->GetData(data);
